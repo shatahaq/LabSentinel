@@ -1,0 +1,20 @@
+# Contoh konfigurasi Agent Lab Sentinel.
+# Salin ke lokasi data agent (mis. C:\ProgramData\LabSentinel\agent\agent.toml)
+# dan sesuaikan. JANGAN menaruh token di sini — token ada di file terpisah.
+
+data_dir = "C:/ProgramData/LabSentinel/agent"
+log_level = "INFO"
+
+# Discovery otomatis via UDP. Isi direct_url hanya jika broadcast tidak tersedia.
+discovery_port = 50123
+# direct_url = "ws://10.0.0.5:8765"
+discovery_timeout_s = 8.0
+
+# File berisi token pairing mentah (dibuat saat pairing).
+token_file = "C:/ProgramData/LabSentinel/agent/token"
+
+heartbeat_interval_s = 5.0
+close_grace_seconds = 5          # jeda peringatan sebelum menutup aplikasi
+poll_fallback_interval_s = 3.0   # fallback bila event WMI tak tersedia
+screen_grid_fps = 1.0
+screen_hi_res_fps = 5.0

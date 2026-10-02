@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# LabSentinel runtime data (never commit real data)
+*.sqlite
+*.sqlite3
+*.db
+data/
+logs/
+*.log
+screenshots/
+run/
+*.labsentinel-backup.json
+
+# Secrets / local config overrides
+.env
+*.local.toml
+config.local.*
+pairing_token.txt
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.spec.bak

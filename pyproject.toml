@@ -1,0 +1,85 @@
+[project]
+name = "labsentinel"
+version = "0.1.0"
+description = "Lab Sentinel — transparent lab PC monitoring & control over LAN (institution-owned devices only)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary — institutional use only" }
+authors = [{ name = "Shata Diyaul Haq" }]
+
+# Core deps shared by all components. Platform-specific (Windows) deps are
+# gated with environment markers so the pure-Python core installs & tests
+# anywhere (incl. CI on Linux).
+dependencies = [
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dashboard = [
+    "eel>=0.16",
+    "websockets>=12.0",
+    "reportlab>=4.0",
+    "openpyxl>=3.1",
+]
+agent = [
+    "websockets>=12.0",
+    "psutil>=5.9",
+    "mss>=9.0",
+    "Pillow>=10.0",
+    # Windows-only — markers keep non-Windows installs working for core tests.
+    "pywin32>=306; sys_platform == 'win32'",
+    "wmi>=1.5; sys_platform == 'win32'",
+    "pystray>=0.19; sys_platform == 'win32'",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "black>=24.0",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+packaging = ["pyinstaller>=6.0"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["shared", "agent", "dashboard"]
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["shared", "agent", "dashboard", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "RUF"]
+ignore = ["B008"]  # allow calls in defaults (pydantic Field patterns)
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true   # wmi/win32/eel ship no stubs
+mypy_path = "shared:agent:dashboard"
+exclude = ["build/", "dist/"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q"
+markers = [
+    "windows: tests that require real Windows APIs (skipped elsewhere)",
+    "admin: tests that require Administrator privileges",
+    "integration: cross-component tests over real sockets",
+]

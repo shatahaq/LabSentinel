@@ -1,0 +1,27 @@
+# Contoh konfigurasi Dashboard Lab Sentinel (PC pengawas).
+# Salin ke C:\ProgramData\LabSentinel\dashboard\dashboard.toml dan sesuaikan.
+
+data_dir = "C:/ProgramData/LabSentinel/dashboard"
+log_level = "INFO"
+dashboard_name = "Lab Sentinel - Lab A"
+
+# Server WebSocket untuk agent (dengarkan di semua antarmuka LAN).
+ws_host = "0.0.0.0"
+ws_port = 8765
+
+# Beacon UDP discovery.
+discovery_port = 50123
+beacon_interval_s = 3.0
+# advertise_host = "10.0.0.5"   # IP LAN yang diumumkan; autodetect bila kosong
+
+# UI admin (Eel) — hanya localhost.
+eel_host = "localhost"
+eel_port = 8080
+
+# File berisi hash SHA-256 token pairing (token mentah TIDAK disimpan di sini).
+token_hash_file = "C:/ProgramData/LabSentinel/dashboard/token_hash"
+
+default_mode = "lab"       # exam | lab | free
+default_dry_run = true     # audit-only saat pertama dipasang
+heartbeat_timeout_s = 15.0 # PC dianggap 'dropped' bila tak ada heartbeat sekian detik
+retention_days = 30        # hapus otomatis data lebih lama dari ini
