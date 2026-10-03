@@ -31,11 +31,35 @@ Legenda: 🔑 = butuh Administrator, 🖥️ = butuh dua PC (agent + dashboard).
 
 ## M3 — Jeda/lanjut & tray
 
+Sudah terbukti otomatis (lihat `tests/integration/test_m3_control.py`,
+`test_tray_bridge.py`, `test_tray_end_to_end.py`): alur jeda→ACK→ikon berubah,
+audit log, helper tanpa wewenang, dan deteksi indikator hilang. Yang di bawah
+ini memverifikasi tampilannya di desktop nyata.
+
+Demo manual ikon tray (dua terminal):
+
+```powershell
+python scripts/tray_demo.py
+python -m labsentinel_agent.tray --data-dir "<dir yang dicetak perintah di atas>"
+```
+
+- [ ] Ikon tray muncul; **arahkan kursor** → tooltip menyebut status dengan
+  kata-kata ("Pemantauan aktif"), bukan hanya warna.
+- [ ] Status berganti Aktif → Dijeda → Uji coba → Terputus; warna **dan** glyph
+  ikut berubah tiap status.
+- [ ] Klik kanan ikon → menu hanya menampilkan status (read-only); **tidak ada**
+  opsi untuk menjeda/mematikan pemantauan.
+- [ ] Peringatan "aplikasi akan ditutup" muncul sebagai balloon dan **tidak
+  merebut fokus** — ketik di aplikasi lain saat popup muncul, ketikan tidak
+  terpotong.
 - [ ] Admin menekan **Jeda** di dashboard → ikon tray peserta berubah
-  "Dijeda"; aplikasi di luar whitelist **tidak** lagi ditutup.
+  "Dijeda" dalam hitungan detik; aplikasi di luar whitelist **tidak** lagi
+  ditutup.
 - [ ] Admin **Lanjut** → enforcement aktif lagi dalam hitungan detik, tanpa
   restart PC.
-- [ ] Peserta **tidak** dapat menjeda sendiri.
+- [ ] 🔑 Peserta **tidak** dapat menjeda sendiri: matikan proses helper tray dari
+  Task Manager → penegakan aturan **tetap berjalan** (buka aplikasi terlarang,
+  tetap ditutup) dan dashboard menandai indikator tidak terlihat.
 - [ ] Setiap aksi tercatat di **audit log** (siapa, kapan, PC mana).
 
 ## M4 — Kebijakan situs browser (🔑)

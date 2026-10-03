@@ -219,6 +219,11 @@
           "title": "Cpu Percent",
           "type": "number"
         },
+        "indicator_visible": {
+          "default": true,
+          "title": "Indicator Visible",
+          "type": "boolean"
+        },
         "mem_mb": {
           "default": 0.0,
           "minimum": 0.0,
@@ -488,6 +493,7 @@
       "enum": [
         "app_blocked",
         "app_closed",
+        "impersonation",
         "site_title",
         "agent_tamper"
       ],

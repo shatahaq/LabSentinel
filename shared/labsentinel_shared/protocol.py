@@ -66,6 +66,9 @@ class HeartbeatPayload(_Payload):
     cpu_percent: float = Field(default=0.0, ge=0.0, le=100.0)
     mem_mb: float = Field(default=0.0, ge=0.0)
     active_window_title: str = Field(default="", max_length=256)
+    # False when the participant's tray indicator is not being shown (helper
+    # missing or killed). Transparency requires the dashboard to surface this.
+    indicator_visible: bool = True
 
 
 class ViolationPayload(_Payload):

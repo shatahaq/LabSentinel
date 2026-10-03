@@ -15,7 +15,7 @@ Transparan, berbasis *whitelist*, dan hanya untuk perangkat milik institusi.
 
 | Komponen | Lokasi | Peran |
 |----------|--------|-------|
-| **Agent** | tiap PC peserta | Windows Service latar belakang: menegakkan whitelist aplikasi, mengelola kebijakan situs browser, mengirim layar & pelanggaran, menampilkan indikator tray. |
+| **Agent** | tiap PC peserta | Dua proses dalam satu instalasi: **service** latar belakang (penegakan whitelist, kebijakan situs, kirim layar & pelanggaran) + **helper sesi pengguna** (ikon tray & popup peringatan). Lihat [ADR-0004](docs/adr/0004-agent-two-process-split.md). |
 | **Dashboard** | PC pengawas | Server WebSocket untuk agent + database SQLite + UI admin (Eel). |
 
 Agent adalah **client**; dashboard menjalankan **server WebSocket khusus** untuk
@@ -53,13 +53,15 @@ python scripts/m1_smoke.py
 
 | Milestone | Isi | Status |
 |-----------|-----|--------|
-| **M1** | Protokol + transport dasar: UDP discovery, WebSocket, heartbeat, pairing, auth token, anti-replay, auto-reconnect, rule cache | ✅ Selesai & teruji (40 test lulus) |
-| M2 | Penegakan whitelist aman + peringatan + screenshot bukti + dry-run | ⏳ |
-| M3 | Kontrol jeda/lanjut dari dashboard + audit log + ikon tray | ⏳ |
+| **M1** | Protokol + transport dasar: UDP discovery, WebSocket, heartbeat, pairing, auth token, anti-replay, auto-reconnect, rule cache | ✅ Selesai & teruji |
+| **M2** | Penegakan whitelist aman + peringatan + screenshot bukti + dry-run | ✅ Selesai & teruji |
+| **M3** | Kontrol jeda/lanjut (per-PC & massal, ber-ACK) + audit log + sesi + ikon tray peserta | ✅ Selesai & teruji |
 | M4 | Pemblokiran situs via kebijakan browser (registry) + pencatatan judul jendela | ⏳ |
 | M5 | Streaming layar adaptif + grid dashboard + notifikasi real-time | ⏳ |
 | M6 | Mode/profil, laporan PDF/Excel, anti-tamper (service, watchdog) | ⏳ |
 | M7 | Polish UI/UX, optimasi performa, packaging + dokumentasi | ⏳ |
+
+Status terakhir: **180 test lulus**, `ruff` dan `mypy --strict` bersih.
 
 Lihat [docs/architecture.md](docs/architecture.md) untuk desain lengkap dan
 [docs/manual-test-checklist.md](docs/manual-test-checklist.md) untuk uji yang

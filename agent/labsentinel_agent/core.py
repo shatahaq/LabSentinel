@@ -49,6 +49,8 @@ class RuntimeState:
 LockFn = Callable[[], bool]
 NotifyFn = Callable[[str, str], None]
 Snapshot = Callable[[], list[ProcessInfo]]
+# Pushes (state, connected) to the participant's on-screen indicator.
+StatusSink = Callable[[AgentState, bool], None]
 
 
 @dataclass
@@ -68,6 +70,7 @@ class AgentCore:
         detector: _Detector,
         lock_fn: LockFn,
         notify_fn: NotifyFn,
+        status_sink: StatusSink | None = None,
     ) -> None:
         self._rt = runtime
         self._cache = cache
@@ -75,6 +78,8 @@ class AgentCore:
         self._detector = detector
         self._lock = lock_fn
         self._notify = notify_fn
+        self._status_sink = status_sink
+        self._connected = False
         self._client: DashboardClient | None = None
         self._sweep_lock = asyncio.Lock()
 
@@ -94,14 +99,18 @@ class AgentCore:
         log.info("command %s from %s", cmd.command, cmd.issued_by or "?")
         if cmd.command is CommandType.PAUSE:
             self._rt.state = AgentState.PAUSED
+            # The participant must see the paused state immediately.
+            self.publish_status()
             # (M4) browser policy is cleared on pause by the policy manager.
             return CommandResult(resulting_state=self._rt.state, message="paused")
         if cmd.command is CommandType.RESUME:
             self._rt.state = AgentState.ENFORCING
+            self.publish_status()
             await self.sweep_running()
             return CommandResult(resulting_state=self._rt.state, message="resumed")
         if cmd.command is CommandType.SET_DRY_RUN:
             self._rt.dry_run_override = _parse_bool(cmd.text, default=True)
+            self.publish_status()
             return CommandResult(
                 resulting_state=self._rt.state,
                 message=f"dry_run={self._rt.dry_run_override}",
@@ -117,6 +126,22 @@ class AgentCore:
 
     def state(self) -> AgentState:
         return self._rt.state
+
+    # -- participant-visible status ----------------------------------------
+    def set_connected(self, connected: bool) -> None:
+        """Record dashboard connectivity and refresh the on-screen indicator."""
+        if self._connected != connected:
+            self._connected = connected
+            self.publish_status()
+
+    def publish_status(self) -> None:
+        """Push the current status to the participant's tray indicator."""
+        if self._status_sink is None:
+            return
+        try:
+            self._status_sink(self._rt.state, self._connected)
+        except Exception:
+            log.warning("could not update participant indicator", exc_info=True)
 
     # -- violation emission -------------------------------------------------
     async def emit_violation(self, rec: ViolationRecord) -> None:

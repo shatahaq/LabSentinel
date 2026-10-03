@@ -96,6 +96,9 @@ class AgentView:
     mem_mb: float = 0.0
     active_window_title: str = ""
     violation_count: int = 0
+    # False when the PC is monitored but the participant cannot see the tray
+    # indicator (helper missing/killed) — a transparency problem to surface.
+    indicator_visible: bool = True
 
     @property
     def status(self) -> ConnectionStatus:
@@ -257,6 +260,7 @@ class DashboardService:
         view.cpu_percent = hb.cpu_percent
         view.mem_mb = hb.mem_mb
         view.active_window_title = hb.active_window_title
+        view.indicator_visible = hb.indicator_visible
         if throttle_db:
             self._db.touch_agent(agent_id, now)
         self._publish_agent(view)
