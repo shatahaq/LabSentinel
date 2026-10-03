@@ -64,16 +64,45 @@ python -m labsentinel_agent.tray --data-dir "<dir yang dicetak perintah di atas>
 
 ## M4 — Kebijakan situs browser (🔑)
 
-- [ ] Buka situs terlarang di Chrome → halaman **"diblokir oleh administrator"**.
-  Verifikasi entri di `chrome://policy` dan `edge://policy`.
-- [ ] Mode incognito/InPrivate dinonaktifkan selama pemantauan aktif.
-- [ ] **Kebijakan institusi tidak rusak:** set kebijakan `URLBlocklist` institusi
-  lebih dulu → jalankan agent → pastikan entri institusi tetap ada setelah agent
-  menulis & setelah agent berhenti/di-uninstall (restore benar).
-- [ ] Jeda → kebijakan Lab Sentinel dilepas (situs tak lagi diblokir) tanpa
-  menghapus entri institusi; Lanjut → dipasang lagi.
+Logika backup/restore sudah terbukti otomatis terhadap registry tiruan
+(`tests/unit/test_browser_policy.py`, 22 test), termasuk kebijakan institusi
+selamat, pemulihan setelah crash, dan penolakan backup rusak. **Yang belum bisa
+diverifikasi tanpa hak admin: penulisan `HKLM` sungguhan dan reaksi Chrome/Edge
+asli.** Semua item di bawah ini wajib dijalankan di PC lab sebagai Administrator.
+
+> ⚠️ Jalankan dulu di PC uji, bukan PC produksi. Ambil cadangan registry
+> (`reg export HKLM\SOFTWARE\Policies policies-backup.reg`) sebelum mulai.
+
+- [ ] 🔑 Buka situs terlarang di Chrome → halaman **"diblokir oleh
+  administrator"**. Ulangi di Edge.
+- [ ] 🔑 Verifikasi entri benar-benar terpasang di `chrome://policy` dan
+  `edge://policy` (cari `URLBlocklist`), lalu klik **Reload policies**.
+- [ ] 🔑 Mode incognito/InPrivate tidak bisa dibuka selama pemantauan aktif
+  (`IncognitoModeAvailability` / `InPrivateModeAvailability` = 1).
+- [ ] 🔑 **Kebijakan institusi tidak rusak** — uji paling penting:
+  1. Pasang dulu entri institusi sendiri di
+     `HKLM\SOFTWARE\Policies\Google\Chrome\URLBlocklist` (mis. `1` =
+     `malware.example`) dan satu kebijakan lain (mis. `HomepageLocation`).
+  2. Jalankan agent dengan pemantauan aktif → entri institusi **masih ada** dan
+     tetap berada di urutan awal; entri Lab Sentinel menyusul sesudahnya.
+  3. Jeda pemantauan → entri Lab Sentinel hilang, entri institusi **utuh**,
+     `HomepageLocation` tidak tersentuh.
+  4. Lanjutkan → terpasang lagi.
+- [ ] 🔑 **Pemulihan setelah mati paksa:** saat pemantauan aktif, matikan paksa
+  proses agent (bukan stop service). Jalankan ulang → agent memulihkan kebijakan
+  asli lebih dulu (lihat log `found leftover policy backup`), lalu memasang lagi.
+- [ ] 🔑 **Uninstall** → seluruh entri Lab Sentinel hilang, entri institusi utuh,
+  dan `HKLM\SOFTWARE\LabSentinel\PolicyState\Managing` = 0.
+- [ ] Tanpa hak admin → agent **tidak crash**, hanya mencatat error "access
+  denied"; penegakan whitelist aplikasi tetap berjalan.
 - [ ] Judul jendela browser yang memuat kata kunci terlarang → pelanggaran
-  tercatat dengan label "terdeteksi dari judul jendela", tidak spam (dedup).
+  tercatat dengan label **"terdeteksi dari judul jendela"**, dan judul yang sama
+  tidak dilaporkan berulang (dedup).
+- [ ] **Uji false positive:** buka Google Classroom, Google Drive, dan materi
+  kuliah biasa → **tidak** muncul pelanggaran situs.
+- [ ] Browser selain Chrome/Edge (mis. Firefox) **tidak** terblokir situsnya —
+  konfirmasi bahwa whitelist aplikasi yang menahannya (Firefox ditutup karena
+  tidak ada di whitelist).
 
 ## M5 — Streaming & grid
 

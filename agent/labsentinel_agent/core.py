@@ -17,6 +17,7 @@ import base64
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
@@ -53,6 +54,16 @@ Snapshot = Callable[[], list[ProcessInfo]]
 StatusSink = Callable[[AgentState, bool], None]
 
 
+class PolicyManager(Protocol):
+    """Browser site-blocking policy (see policy.browser_policy)."""
+
+    def apply(self, patterns: list[str], *, block_incognito: bool = True) -> None: ...
+
+    def clear(self) -> None: ...
+
+    def recover_if_needed(self) -> bool: ...
+
+
 @dataclass
 class _Detector:
     watch_new_processes: Callable[[Callable[[ProcessInfo], Awaitable[None]]], Awaitable[None]]
@@ -71,6 +82,7 @@ class AgentCore:
         lock_fn: LockFn,
         notify_fn: NotifyFn,
         status_sink: StatusSink | None = None,
+        policy: PolicyManager | None = None,
     ) -> None:
         self._rt = runtime
         self._cache = cache
@@ -79,6 +91,7 @@ class AgentCore:
         self._lock = lock_fn
         self._notify = notify_fn
         self._status_sink = status_sink
+        self._policy = policy
         self._connected = False
         self._client: DashboardClient | None = None
         self._sweep_lock = asyncio.Lock()
@@ -92,8 +105,35 @@ class AgentCore:
         if updated:
             self._rt.ruleset = self._cache.current
             log.info("ruleset applied: rev=%d dry_run=%s", ruleset.revision, ruleset.dry_run)
+            self.sync_browser_policy()
             if self._rt.state is AgentState.ENFORCING:
                 await self.sweep_running()
+
+    def sync_browser_policy(self) -> None:
+        """Make the browser policy match the current state and ruleset.
+
+        Paused (or dry-run) means nothing is blocked: the policy is removed and
+        the institution's own policy restored. Enforcing re-applies it.
+        """
+        if self._policy is None:
+            return
+        ruleset = self._rt.effective_ruleset()
+        should_block = (
+            self._rt.state is AgentState.ENFORCING
+            and ruleset is not None
+            and not ruleset.dry_run
+            and bool(ruleset.site_blocklist)
+        )
+        try:
+            if should_block and ruleset is not None:
+                self._policy.apply(
+                    [rule.pattern for rule in ruleset.site_blocklist],
+                    block_incognito=ruleset.block_incognito,
+                )
+            else:
+                self._policy.clear()
+        except Exception:
+            log.warning("could not sync browser policy", exc_info=True)
 
     async def on_command(self, cmd: CommandPayload) -> CommandResult:
         log.info("command %s from %s", cmd.command, cmd.issued_by or "?")
@@ -101,16 +141,19 @@ class AgentCore:
             self._rt.state = AgentState.PAUSED
             # The participant must see the paused state immediately.
             self.publish_status()
-            # (M4) browser policy is cleared on pause by the policy manager.
+            # Paused means nothing is blocked: restore the original policy.
+            self.sync_browser_policy()
             return CommandResult(resulting_state=self._rt.state, message="paused")
         if cmd.command is CommandType.RESUME:
             self._rt.state = AgentState.ENFORCING
             self.publish_status()
+            self.sync_browser_policy()
             await self.sweep_running()
             return CommandResult(resulting_state=self._rt.state, message="resumed")
         if cmd.command is CommandType.SET_DRY_RUN:
             self._rt.dry_run_override = _parse_bool(cmd.text, default=True)
             self.publish_status()
+            self.sync_browser_policy()
             return CommandResult(
                 resulting_state=self._rt.state,
                 message=f"dry_run={self._rt.dry_run_override}",
