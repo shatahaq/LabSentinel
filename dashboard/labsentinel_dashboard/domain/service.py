@@ -25,7 +25,7 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -33,7 +33,7 @@ from typing import Any, Protocol
 
 from labsentinel_dashboard.domain.events import EventBus, Topic
 from labsentinel_dashboard.storage.db import Database
-from labsentinel_shared.enums import AgentState, CommandType, ConnectionStatus
+from labsentinel_shared.enums import AgentState, CommandType, ConnectionStatus, StreamMode
 from labsentinel_shared.protocol import (
     AckPayload,
     CommandPayload,
@@ -75,7 +75,10 @@ class AgentLink(Protocol):
     """What the service needs from the WebSocket server."""
 
     def get(self, agent_id: str) -> AgentSessionLike | None: ...
-    def sessions(self) -> list[AgentSessionLike]: ...
+
+    # Sequence (not list) so a concrete server returning its own session type
+    # still satisfies this protocol — list is invariant.
+    def sessions(self) -> Sequence[AgentSessionLike]: ...
 
 
 @dataclass
@@ -96,6 +99,9 @@ class AgentView:
     mem_mb: float = 0.0
     active_window_title: str = ""
     violation_count: int = 0
+    # When the last violation happened, so the UI can highlight PCs that are
+    # misbehaving *now* rather than any PC that ever misbehaved.
+    last_violation_at: float = 0.0
     # False when the PC is monitored but the participant cannot see the tray
     # indicator (helper missing/killed) — a transparency problem to surface.
     indicator_visible: bool = True
@@ -169,6 +175,9 @@ class DashboardService:
         self._last_notified: dict[tuple[str, str], float] = {}
         self._latest_frames: dict[str, ScreenFramePayload] = {}
         self._bg_tasks: set[asyncio.Task[Any]] = set()
+        self._grid_open = False
+        self._focused_agent: str | None = None
+        self._stream_modes: dict[str, StreamMode] = {}
         self._paused: set[str] = set(db.get_setting(_SETTING_PAUSED, default=[]))
         # "Pause all" also covers PCs that join later.
         self._global_paused: bool = bool(db.get_setting(_SETTING_GLOBAL_PAUSED, default=False))
@@ -227,6 +236,10 @@ class DashboardService:
         )
         self._publish_agent(view)
 
+        # A PC that joins mid-session must match what the admin is watching.
+        self._stream_modes.pop(session.agent_id, None)
+        self._spawn(self._send_stream_mode(session, self._desired_mode(session.agent_id)))
+
         # Re-apply the admin's pause decision to a PC that (re)joins.
         if self.is_desired_paused(session.agent_id):
             log.info("re-pausing %s on reconnect (desired state)", session.agent_id)
@@ -245,6 +258,8 @@ class DashboardService:
             return
         view.connection = ConnectionStatus.OFFLINE if clean else ConnectionStatus.DROPPED
         self._fail_pending_for(agent_id)
+        self._stream_modes.pop(agent_id, None)
+        self._latest_frames.pop(agent_id, None)  # don't show a stale screen
         self._publish_agent(view)
 
     async def on_heartbeat(self, agent_id: str, hb: HeartbeatPayload) -> None:
@@ -284,6 +299,7 @@ class DashboardService:
         )
         if view is not None:
             view.violation_count += 1
+            view.last_violation_at = max(view.last_violation_at, v.occurred_at)
             self._publish_agent(view)
 
         key = (agent_id, v.subject.lower())
@@ -372,6 +388,43 @@ class DashboardService:
         return await self._dispatch(
             self._resolve(agent_ids), cmd, actor=actor, details={"text": text[:200]}
         )
+
+    # ------------------------------------------------------------ streaming
+    async def set_viewing(self, *, grid_open: bool, focused_agent: str | None = None) -> None:
+        """Tell agents how much screen to send, based on what the admin sees.
+
+        Nobody viewing -> every agent stops capturing entirely (privacy + cost).
+        Grid open -> thumbnails. One PC opened -> that PC streams hi-res.
+        Stream level is not a security action, so it is sent without the
+        ACK/audit machinery used for pause/resume.
+
+        Coroutine (not a plain method) because the UI lives on another thread:
+        it must be submitted to this service's event loop, never called directly.
+        """
+        self._grid_open = grid_open
+        self._focused_agent = focused_agent
+        if self._link is None:
+            return
+        for session in self._link.sessions():
+            await self._send_stream_mode(session, self._desired_mode(session.agent_id))
+
+    def _desired_mode(self, agent_id: str) -> StreamMode:
+        if self._focused_agent == agent_id:
+            return StreamMode.HIRES
+        if self._grid_open:
+            return StreamMode.GRID
+        return StreamMode.OFF
+
+    async def _send_stream_mode(self, session: AgentSessionLike, mode: StreamMode) -> None:
+        if self._stream_modes.get(session.agent_id) is mode:
+            return
+        self._stream_modes[session.agent_id] = mode
+        with contextlib.suppress(Exception):
+            await session.send_command(
+                CommandPayload(
+                    command=CommandType.SET_STREAM, text=str(mode), issued_by=SYSTEM_ACTOR
+                )
+            )
 
     async def push_rules(self, ruleset: RuleSet) -> int:
         """Send the current ruleset to every connected PC. Returns PCs reached."""

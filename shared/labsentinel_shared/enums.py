@@ -56,8 +56,17 @@ class CommandType(StrEnum):
     SET_DRY_RUN = "set_dry_run"
     LOCK_SCREEN = "lock_screen"
     BROADCAST_MESSAGE = "broadcast_message"
-    START_HI_RES_STREAM = "start_hi_res_stream"  # admin opened this PC full-screen
-    STOP_HI_RES_STREAM = "stop_hi_res_stream"
+    # Screen streaming level. Carried in the command's `text` as a StreamMode,
+    # so the agent can stop capturing entirely when nobody is watching.
+    SET_STREAM = "set_stream"
+
+
+class StreamMode(StrEnum):
+    """How much screen the agent should send right now."""
+
+    OFF = "off"  # nobody is watching (or paused): capture nothing at all
+    GRID = "grid"  # thumbnail in the monitoring grid: low fps, small
+    HIRES = "hires"  # admin opened this PC full-screen: higher fps, larger
 
 
 class MsgType(StrEnum):

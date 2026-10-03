@@ -43,11 +43,23 @@ python -m pytest            # unit + integration
 python -m ruff check .      # lint
 ```
 
-Demo M1 langsung (server + agent di satu proses, loopback):
+## Mencoba dashboard
+
+Menjalankan dashboard sungguhan dengan PC simulasi — cara tercepat melihat
+tampilan dan alur kerjanya tanpa lab:
 
 ```powershell
-python scripts/m1_smoke.py
+python scripts/demo_lab.py --pcs 14
 ```
+
+Menjalankan dashboard sebenarnya:
+
+```powershell
+python -m labsentinel_dashboard --keep-running
+```
+
+Demo lain: `scripts/m1_smoke.py` (transport), `scripts/tray_demo.py` (ikon tray),
+`scripts/measure_agent.py` (footprint agent).
 
 ## Status milestone
 
@@ -56,8 +68,8 @@ python scripts/m1_smoke.py
 | **M1** | Protokol + transport dasar: UDP discovery, WebSocket, heartbeat, pairing, auth token, anti-replay, auto-reconnect, rule cache | ✅ Selesai & teruji |
 | **M2** | Penegakan whitelist aman + peringatan + screenshot bukti + dry-run | ✅ Selesai & teruji |
 | **M3** | Kontrol jeda/lanjut (per-PC & massal, ber-ACK) + audit log + sesi + ikon tray peserta | ✅ Selesai & teruji |
-| M4 | Pemblokiran situs via kebijakan browser (registry) + pencatatan judul jendela | ⏳ |
-| M5 | Streaming layar adaptif + grid dashboard + notifikasi real-time | ⏳ |
+| **M4** | Pemblokiran situs via kebijakan browser (registry) + pencatatan judul jendela | ✅ Selesai & teruji |
+| **M5** | Streaming layar adaptif + UI dashboard (grid, aturan, laporan, audit) | ✅ Selesai & teruji |
 | M6 | Mode/profil, laporan PDF/Excel, anti-tamper (service, watchdog) | ⏳ |
 | M7 | Polish UI/UX, optimasi performa, packaging + dokumentasi | ⏳ |
 

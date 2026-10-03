@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab Sentinel</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<script type="text/javascript" src="/eel.js"></script>
+</head>
+<body>
+
+<!-- Icon sprite: real vector icons, no emoji, so they inherit colour and scale. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l7 3v6c0 4.4-3 8.3-7 9-4-0.7-7-4.6-7-9V6l7-3z"/><path d="M9.5 12.2l1.8 1.8 3.4-3.6"/>
+    </symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 10.5L12 4l9 6.5V19a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>
+    </symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+    </symbol>
+    <symbol id="i-report" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H7a1 1 0 00-1 1v16a1 1 0 001 1h10a1 1 0 001-1V7z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/>
+    </symbol>
+    <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 109-9 9 9 0 00-6.7 3"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>
+    </symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M9 5v14M15 5v14"/>
+    </symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
+    </symbol>
+    <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 4H4a1 1 0 00-1 1v10a1 1 0 001 1h3v4l5-4h8a1 1 0 001-1V5a1 1 0 00-1-1z"/>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4l9 16H3z"/><path d="M12 10v4"/><circle cx="12" cy="17.2" r="0.6" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12.5l4.5 4.5L19 7.5"/>
+    </symbol>
+    <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></symbol>
+    <symbol id="i-dot-hollow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/>
+    </symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>
+    </symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 3l18 18"/><path d="M10.6 10.7a2 2 0 002.8 2.8"/>
+      <path d="M9.4 5.3A9.6 9.6 0 0112 5c5 0 9 4.5 9 7a11 11 0 01-2.4 3.6M6.5 6.8C4.3 8.3 3 10.4 3 12c0 2.5 4 7 9 7a9.3 9.3 0 003.6-.7"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>
+    </symbol>
+    <symbol id="i-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><circle cx="7" cy="6.5" r="0.6" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18 14 14 0 010-18z"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 1.9"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <div class="brand">
+    <svg class="brand__mark" aria-hidden="true"><use href="#i-shield"/></svg>
+    <span class="brand__name">Lab Sentinel</span>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__session" id="topbar-session"></div>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__actions">
+      <button class="btn" id="btn-pause-all">
+        <svg class="btn__icon" aria-hidden="true"><use href="#i-pause"/></svg>
+        Jeda semua
+      </button>
+      <button class="btn btn--primary" id="btn-resume-all">
+        <svg class="btn__icon" aria-hidden="true"><use href="#i-play"/></svg>
+        Lanjutkan semua
+      </button>
+      <button class="btn btn--icon btn--ghost" id="btn-theme" title="Ganti tema terang/gelap"
+              aria-label="Ganti tema terang atau gelap">
+        <svg class="btn__icon" aria-hidden="true"><use href="#i-moon" id="theme-icon"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <nav class="sidebar" aria-label="Navigasi utama">
+    <button class="nav-item" data-page="beranda" aria-current="page">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-home"/></svg><span>Beranda</span>
+    </button>
+    <button class="nav-item" data-page="monitoring">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-grid"/></svg><span>Layar PC</span>
+      <span class="nav-item__badge" id="nav-badge" hidden>0</span>
+    </button>
+    <button class="nav-item" data-page="aturan">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Aturan</span>
+    </button>
+    <button class="nav-item" data-page="laporan">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-report"/></svg><span>Laporan</span>
+    </button>
+    <button class="nav-item" data-page="aktivitas">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-history"/></svg><span>Catatan aktivitas</span>
+    </button>
+  </nav>
+
+  <main class="main" id="main">
+    <!-- Beranda -->
+    <section class="page is-active" id="page-beranda" aria-labelledby="t-beranda">
+      <div class="page__head">
+        <div>
+          <h1 class="page__title" id="t-beranda">Beranda</h1>
+          <p class="page__subtitle">Ringkasan sesi dan pelanggaran terbaru.</p>
+        </div>
+        <div class="page__actions" id="session-actions"></div>
+      </div>
+      <div id="dry-run-banner"></div>
+      <div class="stat-row" id="stats"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card__head">
+            <span class="card__title">Pelanggaran terbaru</span>
+            <div class="card__actions">
+              <button class="btn btn--sm btn--ghost" data-goto="laporan">Lihat semua</button>
+            </div>
+          </div>
+          <div class="feed" id="recent-feed"></div>
+        </div>
+        <div class="card">
+          <div class="card__head"><span class="card__title">Sesi</span></div>
+          <div class="card__body" id="session-panel"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Monitoring -->
+    <section class="page" id="page-monitoring" aria-labelledby="t-monitoring">
+      <div class="page__head">
+        <div>
+          <h1 class="page__title" id="t-monitoring">Layar PC</h1>
+          <p class="page__subtitle" id="monitoring-sub">Klik satu PC untuk melihat layarnya lebih besar.</p>
+        </div>
+        <div class="page__actions">
+          <button class="btn btn--sm" id="btn-select-mode">Pilih beberapa PC</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="field" style="min-width:220px">
+          <svg class="field__icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <input type="search" id="pc-search" placeholder="Cari nama PC..." aria-label="Cari PC">
+        </label>
+        <div class="segmented" role="group" aria-label="Saring berdasarkan status">
+          <button data-filter="all" aria-pressed="true">Semua</button>
+          <button data-filter="online" aria-pressed="false">Aktif</button>
+          <button data-filter="paused" aria-pressed="false">Dijeda</button>
+          <button data-filter="dropped" aria-pressed="false">Terputus</button>
+          <button data-filter="offline" aria-pressed="false">Offline</button>
+        </div>
+        <div class="topbar__spacer"></div>
+        <div id="selection-bar" hidden></div>
+      </div>
+
+      <div class="pc-grid" id="pc-grid"></div>
+    </section>
+
+    <!-- Aturan -->
+    <section class="page" id="page-aturan" aria-labelledby="t-aturan">
+      <div class="page__head">
+        <div>
+          <h1 class="page__title" id="t-aturan">Aturan</h1>
+          <p class="page__subtitle">Pilih mode, lalu sesuaikan aplikasi dan situs bila perlu.</p>
+        </div>
+      </div>
+      <div id="rules-content"></div>
+    </section>
+
+    <!-- Laporan -->
+    <section class="page" id="page-laporan" aria-labelledby="t-laporan">
+      <div class="page__head">
+        <div>
+          <h1 class="page__title" id="t-laporan">Laporan</h1>
+          <p class="page__subtitle">Riwayat pelanggaran beserta bukti tangkapan layar.</p>
+        </div>
+        <div class="page__actions" id="report-actions"></div>
+      </div>
+      <div class="card"><div class="table-wrap" id="violations-table"></div></div>
+    </section>
+
+    <!-- Aktivitas -->
+    <section class="page" id="page-aktivitas" aria-labelledby="t-aktivitas">
+      <div class="page__head">
+        <div>
+          <h1 class="page__title" id="t-aktivitas">Catatan aktivitas</h1>
+          <p class="page__subtitle">Semua tindakan pengawas tercatat di sini dan tidak dapat diubah.</p>
+        </div>
+      </div>
+      <div class="card"><div class="table-wrap" id="audit-table"></div></div>
+    </section>
+  </main>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<script src="js/util.js"></script>
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/pages.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

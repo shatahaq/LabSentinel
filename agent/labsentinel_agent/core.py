@@ -23,7 +23,7 @@ from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
 from labsentinel_agent.rule_cache import RuleCache
 from labsentinel_agent.transport.client import CommandResult, DashboardClient
-from labsentinel_shared.enums import AgentState, CommandType, ViolationKind
+from labsentinel_shared.enums import AgentState, CommandType, StreamMode, ViolationKind
 from labsentinel_shared.protocol import CommandPayload, ViolationPayload
 from labsentinel_shared.rules import RuleSet
 
@@ -64,6 +64,12 @@ class PolicyManager(Protocol):
     def recover_if_needed(self) -> bool: ...
 
 
+class Streamer(Protocol):
+    """Adaptive screen streamer (see capture.streamer)."""
+
+    def set_mode(self, mode: StreamMode) -> None: ...
+
+
 @dataclass
 class _Detector:
     watch_new_processes: Callable[[Callable[[ProcessInfo], Awaitable[None]]], Awaitable[None]]
@@ -83,6 +89,7 @@ class AgentCore:
         notify_fn: NotifyFn,
         status_sink: StatusSink | None = None,
         policy: PolicyManager | None = None,
+        streamer: Streamer | None = None,
     ) -> None:
         self._rt = runtime
         self._cache = cache
@@ -92,6 +99,7 @@ class AgentCore:
         self._notify = notify_fn
         self._status_sink = status_sink
         self._policy = policy
+        self._streamer = streamer
         self._connected = False
         self._client: DashboardClient | None = None
         self._sweep_lock = asyncio.Lock()
@@ -164,8 +172,20 @@ class AgentCore:
         if cmd.command is CommandType.BROADCAST_MESSAGE:
             self._notify("Pesan dari pengawas", cmd.text)
             return CommandResult(resulting_state=self._rt.state, message="broadcast shown")
-        # Stream start/stop handled by the capture subsystem (M5); ack ok here.
+        if cmd.command is CommandType.SET_STREAM:
+            return self._set_stream(cmd.text)
         return CommandResult(resulting_state=self._rt.state, message="ok")
+
+    def _set_stream(self, raw_mode: str) -> CommandResult:
+        if self._streamer is None:
+            return CommandResult(resulting_state=self._rt.state, message="no streamer")
+        try:
+            mode = StreamMode(raw_mode.strip().lower())
+        except ValueError:
+            log.warning("unknown stream mode %r; turning streaming off", raw_mode)
+            mode = StreamMode.OFF
+        self._streamer.set_mode(mode)
+        return CommandResult(resulting_state=self._rt.state, message=f"stream={mode}")
 
     def state(self) -> AgentState:
         return self._rt.state

@@ -1,0 +1,157 @@
+/* Lab Sentinel design tokens.
+ *
+ * One restrained accent, neutral surfaces, and semantic colour reserved
+ * strictly for machine status — so a red dot always means the same thing.
+ * Dark mode is defined on its own, not derived by inversion.
+ */
+
+:root {
+  /* ---- neutrals (light) ---- */
+  --canvas:          #fbfbfc;
+  --surface:         #ffffff;
+  --surface-subtle:  #f5f6f8;
+  --surface-sunken:  #eef0f3;
+  --surface-hover:   #f0f2f5;
+
+  --border:          #e2e5ea;
+  --border-strong:   #cdd2da;
+  --border-focus:    #2f5fd0;
+
+  --text:            #15171c;
+  --text-secondary:  #596070;
+  --text-tertiary:   #868d9b;
+  --text-inverse:    #ffffff;
+
+  /* ---- accent ---- */
+  --accent:          #2f5fd0;
+  --accent-hover:    #2850b5;
+  --accent-active:   #22418f;
+  --accent-subtle:   #eaf0fd;
+  --accent-border:   #c3d4f7;
+  --accent-text:     #1e47a8;
+
+  /* ---- status: always paired with an icon and a word ---- */
+  --ok:              #15763c;
+  --ok-subtle:       #e7f4ec;
+  --ok-border:       #b7dfc6;
+
+  --warn:            #8a5a00;
+  --warn-subtle:     #fdf2e0;
+  --warn-border:     #f0d5a3;
+
+  --danger:          #b3261e;
+  --danger-subtle:   #fdecea;
+  --danger-border:   #f3c3bf;
+  --danger-hover:    #96201a;
+
+  --neutral:         #646b78;
+  --neutral-subtle:  #f0f1f4;
+  --neutral-border:  #d8dbe1;
+
+  /* ---- typography ---- */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+               BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas,
+               "SF Mono", Menlo, monospace;
+
+  --text-2xs: 10.5px;
+  --text-xs:  11.5px;
+  --text-sm:  12.5px;
+  --text-md:  13.5px;
+  --text-lg:  15px;
+  --text-xl:  18px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.45;
+  --leading-relaxed: 1.6;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* ---- spacing (4px rhythm) ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ---- shape ---- */
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* Elevation is used sparingly: borders carry most of the structure. */
+  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.05);
+  --shadow-md: 0 2px 6px rgba(16, 20, 28, 0.07), 0 1px 2px rgba(16, 20, 28, 0.05);
+  --shadow-lg: 0 12px 32px rgba(16, 20, 28, 0.14), 0 2px 8px rgba(16, 20, 28, 0.08);
+
+  /* ---- layout ---- */
+  --sidebar-w: 212px;
+  --topbar-h: 48px;
+
+  --transition: 120ms cubic-bezier(0.2, 0, 0.38, 1);
+}
+
+/* Dark theme: separately chosen values, not an inversion. Surfaces step up in
+ * lightness as they come forward, which is what makes depth readable on dark. */
+:root[data-theme="dark"] {
+  --canvas:          #0d0f12;
+  --surface:         #15181d;
+  --surface-subtle:  #1b1f25;
+  --surface-sunken:  #101317;
+  --surface-hover:   #22262e;
+
+  --border:          #272c34;
+  --border-strong:   #3a414c;
+  --border-focus:    #7d9dff;
+
+  --text:            #e7eaef;
+  --text-secondary:  #a2aab8;
+  --text-tertiary:   #737c8b;
+  --text-inverse:    #0d0f12;
+
+  --accent:          #6c8eff;
+  --accent-hover:    #8098ff;
+  --accent-active:   #93a9ff;
+  --accent-subtle:   #19233c;
+  --accent-border:   #2e3d63;
+  --accent-text:     #a8bdff;
+
+  --ok:              #4bab6d;
+  --ok-subtle:       #13241a;
+  --ok-border:       #275437;
+
+  --warn:            #d29a3c;
+  --warn-subtle:     #241c0f;
+  --warn-border:     #574224;
+
+  --danger:          #e2695e;
+  --danger-subtle:   #251413;
+  --danger-border:   #5c2d29;
+  --danger-hover:    #ec7d72;
+
+  --neutral:         #8b93a1;
+  --neutral-subtle:  #1c2026;
+  --neutral-border:  #333942;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --transition: 0ms; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

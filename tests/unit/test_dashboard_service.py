@@ -43,10 +43,16 @@ class FakeSession:
         self.remote_addr = "10.0.0.9:5000"
         self.behaviour = behaviour
         self.state = AgentState.ENFORCING
-        self.commands: list[CommandType] = []
+        self.commands: list[CommandType] = []  # admin commands only
+        self.stream_modes: list[str] = []
         self.rulesets: list[RuleSet] = []
 
     async def send_command(self, cmd: CommandPayload) -> str:
+        # Stream level is fire-and-forget plumbing, not an admin action, so it
+        # is tracked separately and never ACKed.
+        if cmd.command is CommandType.SET_STREAM:
+            self.stream_modes.append(cmd.text)
+            return f"{self.agent_id}-stream-{len(self.stream_modes)}"
         cid = f"{self.agent_id}-{len(self.commands)}"
         self.commands.append(cmd.command)
         if self.behaviour != "silent":

@@ -104,10 +104,28 @@ asli.** Semua item di bawah ini wajib dijalankan di PC lab sebagai Administrator
   konfirmasi bahwa whitelist aplikasi yang menahannya (Firefox ditutup karena
   tidak ada di whitelist).
 
-## M5 — Streaming & grid
+## M5 — Streaming & UI dashboard
 
-- [ ] Grid menampilkan thumbnail ~1 fps untuk banyak PC; buka satu PC → resolusi
-  lebih tinggi. Jeda / tidak ada yang melihat → streaming **berhenti total**.
+Sudah terbukti otomatis: gating streaming (tidak menangkap layar saat dijeda
+atau tak ada penonton), dan UI dijalankan sungguhan lewat `scripts/demo_lab.py`
+dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
+
+- [ ] 🖥️ Grid menampilkan thumbnail untuk semua PC lab; buka satu PC → gambar
+  jelas dan lebih mulus. Tutup → kembali ke thumbnail.
+- [ ] **Privasi:** jeda pemantauan → thumbnail berhenti diperbarui dan agent
+  **berhenti menangkap layar** (periksa CPU agent turun). Pindah ke halaman
+  selain "Layar PC" → streaming juga berhenti.
+- [ ] Beban jaringan wajar dengan 40 PC terbuka di grid (pantau switch/Wi-Fi).
+- [ ] **Lazy render:** gulir grid 40+ PC → tetap mulus, tidak tersendat.
+- [ ] **Aksesibilitas:** jalankan dengan layar hitam-putih (atau simulasi buta
+  warna) → status tiap PC masih bisa dibedakan dari ikon dan teksnya.
+- [ ] **Resolusi lab:** buka pada 1366×768 → sidebar menyusut jadi ikon, tidak
+  ada gulir horizontal, semua tombol tetap terjangkau.
+- [ ] Mode terang dan gelap sama-sama terbaca di proyektor lab.
+- [ ] Navigasi keyboard: Tab menjangkau semua kontrol, Esc menutup dialog,
+  angka 1–5 berpindah halaman.
+- [ ] Tutup jendela dashboard saat `--keep-running` → pencatatan pelanggaran
+  **tetap berjalan**; buka lagi di `http://localhost:8080` → data utuh.
 
 ## M6 — Mode, laporan, anti-tamper
 
