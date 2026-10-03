@@ -43,6 +43,7 @@ class ViolationKind(StrEnum):
 
     APP_BLOCKED = "app_blocked"  # non-whitelisted app detected
     APP_CLOSED = "app_closed"  # non-whitelisted app actually closed
+    IMPERSONATION = "impersonation"  # whitelisted name but failed path/hash verification
     SITE_TITLE = "site_title"  # suspected blocked site, from window title (low precision)
     AGENT_TAMPER = "agent_tamper"  # agent force-killed / watchdog restart
 

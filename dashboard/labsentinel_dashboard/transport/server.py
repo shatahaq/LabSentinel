@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 import websockets
-from websockets.asyncio.server import ServerConnection
+from websockets.asyncio.server import Server, ServerConnection, serve
 
 from labsentinel_shared.enums import MsgType
 from labsentinel_shared.protocol import (
@@ -117,12 +117,12 @@ class WebSocketServer:
         self._max_bytes = max_message_bytes
         self._sessions: dict[str, AgentSession] = {}
         self._replay = ReplayGuard()
-        self._server: websockets.asyncio.server.Server | None = None
+        self._server: Server | None = None
         self._lock = asyncio.Lock()
 
     # -- lifecycle ---------------------------------------------------------
     async def start(self) -> None:
-        self._server = await websockets.asyncio.server.serve(
+        self._server = await serve(
             self._handle,
             self._host,
             self._port,

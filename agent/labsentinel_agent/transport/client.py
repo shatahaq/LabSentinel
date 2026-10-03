@@ -104,6 +104,10 @@ class DashboardClient:
         self._conn: websockets.ClientConnection | None = None
         self.connected = asyncio.Event()
 
+    @property
+    def agent_id(self) -> str:
+        return self._id.agent_id
+
     async def run(self, url_provider: Callable[[], Awaitable[str | None]]) -> None:
         """Connect/reconnect forever until :meth:`stop` is called.
 
@@ -149,10 +153,12 @@ class DashboardClient:
             welcome = await self._await_welcome(conn)
             if welcome is None:
                 return
-            await self._on_ruleset(welcome.ruleset)
+            # Mark connected before applying rules: the socket is live, so a
+            # sweep triggered by the initial ruleset can already send events.
             self._hb_interval = welcome.heartbeat_interval_s
             self.connected.set()
             log.info("joined session %s", welcome.session_id)
+            await self._on_ruleset(welcome.ruleset)
 
             hb_task = asyncio.ensure_future(self._heartbeat_loop(conn))
             try:
