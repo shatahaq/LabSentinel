@@ -155,7 +155,7 @@ class SimulatedPC:
             await self.client.send_event(ScreenFramePayload(
                 agent_id=self.client.agent_id, hi_res=hi, width=w, height=h,
                 jpeg_b64=base64.b64encode(jpeg).decode(), captured_at=time.time()))
-            await asyncio.sleep(0.2 if hi else 1.0)
+            await asyncio.sleep(0.1 if hi else 0.2)
 
     async def _violation_loop(self) -> None:
         while True:

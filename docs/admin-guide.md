@@ -57,9 +57,11 @@ kanan atas mengganti tema terang/gelap.
    Pemrograman Dasar - Kelas B"), pilih mode. (Sesi terjadwal yang mulai dan
    berakhir sendiri sudah didukung di sistem, tetapi belum bisa dibuat dari
    dashboard.)
-3. **Selama sesi** — pantau **Layar PC**: semua PC tampil langsung dalam satu
-   grid (thumbnail diperbarui tiap beberapa detik), jadi seluruh lab terlihat
+3. **Selama sesi** — pantau **Layar PC**: semua PC tampil **live** dalam satu
+   grid (bukan thumbnail per detik), jadi seluruh lab terlihat bergerak
    sekaligus. Klik satu PC untuk melihat layarnya lebih besar dan lebih mulus.
+   (Layar yang diam tidak dikirim ulang terus-menerus, jadi jaringan tetap
+   ringan; begitu layar berubah, gambarnya langsung menyusul.)
    Tombol **Jeda semua / Lanjutkan semua** di kanan atas; untuk beberapa PC
    saja, pakai **Pilih beberapa PC**. Anda juga bisa **mengunci layar** atau
    **mengirim pesan** ke PC terpilih.
