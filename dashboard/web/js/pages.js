@@ -78,6 +78,16 @@
 
   function renderDryRunBanner() {
     const host = $("#dry-run-banner");
+    if (State.rules && State.rules.mode === "free") {
+      host.innerHTML = `
+        <div class="banner banner--info">
+          ${icon("monitor")}
+          <div><strong>Mode Bebas: hanya memantau.</strong>
+            Layar PC tetap terlihat dan aplikasi di luar daftar tetap dicatat, tetapi
+            tidak ada aplikasi yang ditutup atau situs yang diblokir.</div>
+        </div>`;
+      return;
+    }
     if (!State.rules || !State.rules.dry_run) { host.innerHTML = ""; return; }
     host.innerHTML = `
       <div class="banner">
@@ -164,9 +174,9 @@
           <div class="mode-row" id="sess-modes"></div>`;
         const modes = ["exam", "lab", "free"];
         const descs = {
-          exam: ["Ujian", "Paling ketat", "Hanya browser. Semua kategori situs diblokir."],
-          lab: ["Praktikum", "Sedang", "Browser + aplikasi mata kuliah. Situs pengganggu diblokir."],
-          free: ["Bebas", "Tanpa pembatasan", "Tidak ada yang ditutup atau diblokir."],
+          exam: ["Ujian", "Paling ketat", "Hanya browser. Semua kategori situs dan situs tambahan diblokir."],
+          lab: ["Praktikum", "Sedang", "Browser + aplikasi mata kuliah. Situs pilihan diblokir."],
+          free: ["Bebas", "Hanya memantau", "Tidak ada yang ditutup atau diblokir; tetap dicatat."],
         };
         $("#sess-modes", body).innerHTML = modes.map((m, i) => `
           <button class="mode" data-mode="${m}" aria-pressed="${i === 0}">
@@ -268,7 +278,7 @@
             <span>${esc(v.hostname || v.agent_id)}</span>
             <span class="tag">${esc(violationLabel(v.kind))}</span>
             ${v.detected_from_title ? '<span class="tag tag--warn">dari judul jendela</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">uji coba</span>' : ""}
+            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}
           </div>
         </div>
         <div class="feed__time">${esc(ago(v.occurred_at))}</div>
@@ -292,7 +302,7 @@
             <span class="tag">${esc(violationLabel(v.kind))}</span>
             ${v.detected_from_title
               ? '<span class="tag tag--warn">terdeteksi dari judul jendela (akurasi terbatas)</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">mode uji coba — tidak ditindak</span>' : ""}
+            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat — tidak ditindak</span>' : ""}
           </div>
           ${v.detail ? `<p style="color:var(--text-secondary);margin-bottom:var(--s-4)">${esc(v.detail)}</p>` : ""}
           <div id="shot-host"></div>`;
@@ -677,12 +687,11 @@
         <div class="card">
           <div class="card__head"><span class="card__title">Aplikasi yang diizinkan</span></div>
           <div class="card__body">
-            <p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
-              Aplikasi di luar daftar ini akan ditutup otomatis. Browser dan Windows Explorer
-              selalu diizinkan dan tidak dapat dihapus.</p>
+            ${appsNote(rules)}
             <div class="chip-input" id="wl-chips"></div>
             <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
-              <input class="input" id="wl-new" placeholder="contoh: code.exe" style="flex:1">
+              <input class="input" id="wl-new" placeholder="contoh: code.exe" style="flex:1"
+                     aria-label="Nama berkas aplikasi">
               <button class="btn" id="wl-add">Tambah</button>
             </div>
           </div>
@@ -690,10 +699,21 @@
 
         <div class="card">
           <div class="card__head"><span class="card__title">Situs yang diblokir</span>
-            <div class="card__actions"><span class="tag">${rules.site_count} situs</span></div>
+            <div class="card__actions"><span class="tag" id="site-count">${rules.site_count} situs</span></div>
           </div>
           <div class="card__body">
+            ${sitesNote(rules)}
             <div class="check-list" id="cat-list"></div>
+            <div style="font-weight:var(--weight-medium);margin:var(--s-4) 0 var(--s-1)">Situs tambahan</div>
+            <p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
+              Diblokir di mode Praktikum dan Ujian. Tempel alamatnya; seluruh situs ikut
+              diblokir, termasuk subdomainnya.</p>
+            <div class="chip-input" id="site-chips"></div>
+            <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
+              <input class="input" id="site-new" placeholder="contoh: tiktok.com" style="flex:1"
+                     aria-label="Alamat situs">
+              <button class="btn" id="site-add">Tambah</button>
+            </div>
           </div>
         </div>
       </div>
@@ -706,7 +726,8 @@
             <span>
               <div style="font-weight:var(--weight-medium)">Mode uji coba (hanya mencatat)</div>
               <div style="font-size:var(--text-sm);color:var(--text-secondary)">
-                Pelanggaran dicatat, tapi aplikasi tidak ditutup dan situs tidak diblokir.</div>
+                Pelanggaran dicatat, tapi aplikasi tidak ditutup dan situs tidak diblokir.
+                ${rules.mode === "free" ? "Di mode Bebas tidak ada yang ditindak, apa pun pilihan ini." : ""}</div>
             </span>
           </label>
           <label style="display:block;max-width:320px">
@@ -793,9 +814,43 @@
     $$("#cat-list [data-cat]").forEach((box) => box.addEventListener("change", async () => {
       const keys = $$("#cat-list [data-cat]").filter((b) => b.checked).map((b) => b.dataset.cat);
       const r = await API.setSiteCategories(keys);
-      if (r.ok) toast("Daftar situs diperbarui", `${r.rules.site_count} situs diblokir.`, "ok");
+      if (r.ok) { paintSiteCount(r.rules); toast("Daftar situs diperbarui", siteCountText(r.rules), "ok"); }
       else { toast("Gagal", r.error, "error"); box.checked = !box.checked; }
     }));
+
+    // sites added by hand
+    function paintSiteCount(next) {
+      rules.site_count = next.site_count;
+      $("#site-count").textContent = `${next.site_count} situs`;
+    }
+    function paintSites() {
+      $("#site-chips").innerHTML = rules.custom_sites.length
+        ? rules.custom_sites.map((p) => `
+            <span class="chip">${esc(p)}
+              <button data-remove-site="${esc(p)}" aria-label="Hapus ${esc(p)}">${icon("x", "")}</button>
+            </span>`).join("")
+        : '<span style="color:var(--text-tertiary);font-size:var(--text-sm);padding:2px 4px">Belum ada</span>';
+      $$("#site-chips [data-remove-site]").forEach((b) => b.addEventListener("click", async () => {
+        const next = rules.custom_sites.filter((x) => x !== b.dataset.removeSite);
+        const r = await API.setCustomSites(next);
+        if (r.ok) { rules.custom_sites = r.rules.custom_sites; paintSites(); paintSiteCount(r.rules); toast("Situs dihapus", b.dataset.removeSite, "ok"); }
+        else toast("Gagal", r.error, "error");
+      }));
+    }
+    paintSites();
+    const addSite = async () => {
+      const text = $("#site-new").value.trim();
+      if (!text) return;
+      const r = await API.setCustomSites(rules.custom_sites.concat([text]));
+      if (r.ok) {
+        const added = r.rules.custom_sites.filter((x) => !rules.custom_sites.includes(x));
+        rules.custom_sites = r.rules.custom_sites; $("#site-new").value = ""; paintSites(); paintSiteCount(r.rules);
+        toast(added.length ? "Situs ditambahkan" : "Sudah ada di daftar",
+              added.length ? added.join(", ") : "Situs itu sudah diblokir.", added.length ? "ok" : "info");
+      } else toast("Alamat tidak valid", r.error, "warn");
+    };
+    $("#site-add").addEventListener("click", addSite);
+    $("#site-new").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
 
     // behaviour
     $("#opt-dryrun").addEventListener("change", async (e) => {
@@ -810,6 +865,39 @@
         if (r.ok) toast("Tersimpan", "", "ok"); else toast("Gagal", r.error, "error");
       });
     });
+  }
+
+  /* What the app and site lists do in the current mode (Aturan page). */
+  function appsNote(rules) {
+    if (rules.mode === "exam") {
+      return `<div class="banner banner--info">${icon("app")}<div>
+        <strong>Mode Ujian: hanya browser.</strong> Daftar ini tidak berlaku saat Ujian;
+        disimpan untuk Praktikum.</div></div>`;
+    }
+    const action = rules.acts ? "akan ditutup otomatis" : "hanya dicatat, tidak ditutup";
+    return `<p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
+      Aplikasi di luar daftar ini ${action}. Browser dan Windows Explorer selalu diizinkan
+      dan tidak dapat dihapus.</p>`;
+  }
+
+  function sitesNote(rules) {
+    if (rules.mode === "exam") {
+      return `<div class="banner banner--info">${icon("globe")}<div>
+        <strong>Mode Ujian: semua kategori diblokir,</strong> ditambah situs tambahan.
+        Pilihan kategori di bawah dipakai saat Praktikum.</div></div>`;
+    }
+    if (rules.mode === "free") {
+      return `<div class="banner banner--info">${icon("globe")}<div>
+        <strong>Mode Bebas: tidak ada situs yang diblokir.</strong>
+        Daftar di bawah dipakai saat Praktikum dan Ujian.</div></div>`;
+    }
+    return "";
+  }
+
+  function siteCountText(rules) {
+    return rules.mode === "free"
+      ? "Disimpan; berlaku saat Praktikum dan Ujian."
+      : `${rules.site_count} situs diblokir.`;
   }
 
   /* Pemasangan PC: the 6-digit code an admin types once per lab PC. */
@@ -1009,7 +1097,7 @@
             <td class="num">${esc(datetime(v.occurred_at))}</td>
             <td class="truncate">${esc(v.hostname || v.agent_id)}</td>
             <td class="truncate">${esc(v.subject)}
-              ${v.dry_run ? '<span class="tag tag--muted">uji coba</span>' : ""}</td>
+              ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}</td>
             <td>${esc(violationLabel(v.kind))}
               ${v.detected_from_title ? '<span class="tag tag--warn">judul jendela</span>' : ""}</td>
             <td class="cell--right">${v.has_screenshot ? "Ada" : "—"}</td>

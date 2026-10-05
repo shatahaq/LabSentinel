@@ -590,7 +590,7 @@ class LabSentinelAgent:
                 subject=hit.matched,
                 detail=f"Judul jendela: {hit.title}",
                 pid=0,
-                dry_run=bool(ruleset.dry_run) if ruleset else True,
+                dry_run=not ruleset.acts if ruleset else True,
                 acted=False,
                 occurred_at=__import__("time").time(),
                 screenshot_jpeg=self.capturer.capture_jpeg(max_width=960, quality=55),

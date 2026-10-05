@@ -31,14 +31,14 @@ from typing import Any
 
 from labsentinel_dashboard.domain.events import EventBus
 from labsentinel_dashboard.domain.pairing import PairingService
-from labsentinel_dashboard.domain.rules_service import RulesService
+from labsentinel_dashboard.domain.rules_service import RulesService, custom_sites, for_agents
 from labsentinel_dashboard.domain.service import CommandReport, DashboardService
 from labsentinel_dashboard.domain.session_presets import PROFILE_LABELS
 from labsentinel_dashboard.domain.sessions import SessionError, SessionService
-from labsentinel_dashboard.domain.site_presets import ALL_CATEGORIES, BY_KEY, rules_for
+from labsentinel_dashboard.domain.site_presets import ALL_CATEGORIES, BY_KEY, custom_site, rules_for
 from labsentinel_dashboard.storage.db import Database
 from labsentinel_shared.enums import EnforcementMode
-from labsentinel_shared.rules import AppRule, RuleSet, SiteRule
+from labsentinel_shared.rules import CUSTOM_SITE_CATEGORY, AppRule, RuleSet
 
 log = logging.getLogger("labsentinel.dashboard.ui")
 
@@ -214,7 +214,7 @@ class UiBridge:
             return self._err("Mode tidak dikenal.")
         try:
             ruleset = self._rules.update(actor=self._actor, mode=enforcement)
-            reached = self._run(self._svc.push_rules(ruleset))
+            reached = self._run(self._svc.push_rules(for_agents(ruleset)))
             return self._ok(rules=_rules_dict(ruleset), reached=reached)
         except Exception:
             log.exception("set_mode failed")
@@ -233,22 +233,34 @@ class UiBridge:
         return self._update_rules(app_whitelist=apps)
 
     def set_site_categories(self, keys: list[str]) -> dict[str, Any]:
+        """Choose the preset categories; the sites added by hand stay."""
         unknown = [k for k in keys if k not in BY_KEY]
         if unknown:
             return self._err(f"Kategori tidak dikenal: {', '.join(unknown)}")
-        return self._update_rules(site_blocklist=rules_for(list(keys)))
+        presets = rules_for(list(keys))
+        known = {r.pattern for r in presets}
+        added = tuple(r for r in custom_sites(self._rules.current()) if r.pattern not in known)
+        return self._update_rules(site_blocklist=presets + added)
 
-    def set_custom_sites(self, patterns: list[str]) -> dict[str, Any]:
-        """Replace the blocklist with explicit patterns (import / manual edit)."""
-        try:
-            rules = tuple(
-                SiteRule(pattern=p.strip(), category="kustom")
-                for p in dict.fromkeys(patterns)
-                if str(p).strip()
-            )
-        except Exception:
-            return self._err("Daftar situs tidak valid.")
-        return self._update_rules(site_blocklist=rules)
+    def set_custom_sites(self, sites: list[str]) -> dict[str, Any]:
+        """Replace the sites added by hand; the chosen categories stay.
+
+        Each entry is what the admin typed or pasted (a site or an address
+        bar URL); it is reduced to the site, so the whole site is blocked.
+        """
+        added = []
+        for text in dict.fromkeys(str(s) for s in sites):
+            if not text.strip():
+                continue
+            rule = custom_site(text)
+            if rule is None:
+                return self._err(f"“{text.strip()}” bukan alamat situs. Contoh: tiktok.com")
+            added.append(rule)
+        presets = tuple(r for r in self._rules.current().site_blocklist
+                        if r.category != CUSTOM_SITE_CATEGORY)
+        known = {r.pattern for r in presets}
+        unique = {r.pattern: r for r in added if r.pattern not in known}
+        return self._update_rules(site_blocklist=presets + tuple(unique.values()))
 
     def set_close_grace(self, seconds: int) -> dict[str, Any]:
         try:
@@ -262,7 +274,7 @@ class UiBridge:
     def _update_rules(self, **changes: Any) -> dict[str, Any]:
         try:
             ruleset = self._rules.update(actor=self._actor, **changes)
-            reached = self._run(self._svc.push_rules(ruleset))
+            reached = self._run(self._svc.push_rules(for_agents(ruleset)))
             return self._ok(rules=_rules_dict(ruleset), reached=reached)
         except Exception:
             log.exception("rule update failed")
@@ -468,9 +480,14 @@ def _rules_dict(rs: RuleSet) -> dict[str, Any]:
         "close_grace_seconds": rs.close_grace_seconds,
         "block_incognito": rs.block_incognito,
         "app_whitelist": [r.process_name for r in rs.app_whitelist],
-        "site_count": len(rs.site_blocklist),
+        # Blocked in the current mode (Ujian: every category + added; Bebas: none).
+        "site_count": (0 if rs.mode is EnforcementMode.FREE
+                       else len(for_agents(rs).site_blocklist)),
         "site_patterns": [r.pattern for r in rs.site_blocklist],
-        "site_categories": sorted({r.category for r in rs.site_blocklist}),
+        "site_categories": sorted({r.category for r in rs.site_blocklist
+                                   if r.category != CUSTOM_SITE_CATEGORY}),
+        "custom_sites": [r.pattern for r in custom_sites(rs)],
+        "acts": rs.acts,
     }
 
 

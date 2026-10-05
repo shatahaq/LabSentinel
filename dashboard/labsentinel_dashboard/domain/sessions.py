@@ -164,8 +164,8 @@ class SessionService:
         self._db.audit(actor=actor, action="session.start", target=row.name,
                        details={"id": sid, "mode": str(mode)}, result="ok")
         if self._rules.current().mode is not mode:
-            ruleset = self._rules.update(actor=actor, mode=mode)
-            await self._svc.push_rules(ruleset)
+            self._rules.update(actor=actor, mode=mode)
+            await self._svc.push_rules(self._rules.for_agents())
         await self._svc.resume(None, actor=actor)
         self._publish(row)
         return row

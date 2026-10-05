@@ -62,6 +62,9 @@ PROTECTED_PROCESSES: frozenset[str] = frozenset(
     }
 )
 
+# SiteRule.category of the sites an admin types in by hand (not a preset).
+CUSTOM_SITE_CATEGORY = "kustom"
+
 # Browsers that ship as the immovable default whitelist.
 DEFAULT_WHITELIST: frozenset[str] = frozenset({"chrome.exe", "msedge.exe", "explorer.exe"})
 
@@ -131,9 +134,24 @@ class RuleSet(BaseModel):
     block_incognito: bool = True
 
     def effective_whitelist_names(self) -> frozenset[str]:
-        """Allowed process names, always including the immovable defaults."""
+        """Allowed process names, always including the immovable defaults.
+
+        Ujian (exam) allows the browsers only: the coursework apps on the list
+        are for Praktikum and stay saved for it, but do not apply.
+        """
+        if self.mode is EnforcementMode.EXAM:
+            return DEFAULT_WHITELIST
         names = {r.process_name for r in self.app_whitelist}
         return DEFAULT_WHITELIST | names
+
+    @property
+    def acts(self) -> bool:
+        """Whether apps are closed and sites blocked, or only recorded.
+
+        Recording only: in test mode (``dry_run``) and in Bebas (free), which
+        is for watching the screens without restricting anything.
+        """
+        return not self.dry_run and self.mode is not EnforcementMode.FREE
 
     @staticmethod
     def exam_defaults(revision: int) -> RuleSet:

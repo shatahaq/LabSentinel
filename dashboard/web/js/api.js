@@ -41,6 +41,7 @@
     setDryRun: (on) => call("set_dry_run", on),
     setWhitelist: (names) => call("set_whitelist", names),
     setSiteCategories: (keys) => call("set_site_categories", keys),
+    setCustomSites: (sites) => call("set_custom_sites", sites),
     setCloseGrace: (secs) => call("set_close_grace", secs),
 
     startSession: (name, mode) => call("start_session", name, mode),

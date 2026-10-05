@@ -135,7 +135,7 @@ class DashboardApp:
         self.service = DashboardService(
             db=self.db,
             bus=self.bus,
-            rules_provider=self.rules.current,
+            rules_provider=self.rules.for_agents,
             screenshot_dir=config.screenshot_dir,
             heartbeat_timeout_s=config.heartbeat_timeout_s,
         )

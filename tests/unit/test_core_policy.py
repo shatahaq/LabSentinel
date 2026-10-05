@@ -14,7 +14,7 @@ from labsentinel_agent.enforce.safety import SafetyPolicy
 from labsentinel_agent.policy.browser_policy import BrowserPolicyManager
 from labsentinel_agent.policy.registry import FakeRegistry, Hive, ValueType
 from labsentinel_agent.rule_cache import RuleCache
-from labsentinel_shared.enums import AgentState, CommandType
+from labsentinel_shared.enums import AgentState, CommandType, EnforcementMode
 from labsentinel_shared.protocol import CommandPayload
 from labsentinel_shared.rules import RuleSet, SiteRule
 
@@ -89,6 +89,14 @@ async def test_dry_run_blocks_nothing(tmp_path: Path) -> None:
     """Audit-only must not actually block sites."""
     core, _, reg, ruleset = _build(tmp_path, dry_run=True)
     await core.on_ruleset(ruleset)
+    assert not reg.key_exists(Hive.HKLM, CHROME_BL)
+
+
+@pytest.mark.asyncio
+async def test_free_mode_blocks_nothing(tmp_path: Path) -> None:
+    """Bebas is watch-only: no site policy even with enforcing on."""
+    core, _, reg, ruleset = _build(tmp_path, dry_run=False)
+    await core.on_ruleset(ruleset.model_copy(update={"mode": EnforcementMode.FREE}))
     assert not reg.key_exists(Hive.HKLM, CHROME_BL)
 
 

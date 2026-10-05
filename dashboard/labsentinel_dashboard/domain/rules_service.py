@@ -10,9 +10,11 @@ from __future__ import annotations
 import threading
 from typing import Any
 
+from labsentinel_dashboard.domain.site_presets import ALL_CATEGORIES, rules_for
 from labsentinel_dashboard.storage.db import Database
+from labsentinel_shared.enums import EnforcementMode
 from labsentinel_shared.protocol import HelloPayload
-from labsentinel_shared.rules import RuleSet
+from labsentinel_shared.rules import CUSTOM_SITE_CATEGORY, RuleSet, SiteRule
 
 
 class RulesService:
@@ -34,7 +36,11 @@ class RulesService:
 
     def ruleset_for(self, hello: HelloPayload) -> RuleSet:
         """RulesetProvider for the WebSocket server (same rules for every PC)."""
-        return self.current()
+        return self.for_agents()
+
+    def for_agents(self) -> RuleSet:
+        """The ruleset PCs receive: the admin's settings applied to the mode."""
+        return for_agents(self.current())
 
     def update(self, *, actor: str, **changes: Any) -> RuleSet:
         """Apply field changes, bump the revision, persist and audit."""
@@ -61,3 +67,25 @@ class RulesService:
         fields = ruleset.model_dump()
         fields.pop("revision", None)
         return self.update(actor=actor, **fields)
+
+
+def custom_sites(ruleset: RuleSet) -> tuple[SiteRule, ...]:
+    """The sites the admin added by hand (blocked in Praktikum and Ujian)."""
+    return tuple(r for r in ruleset.site_blocklist if r.category == CUSTOM_SITE_CATEGORY)
+
+
+def for_agents(ruleset: RuleSet) -> RuleSet:
+    """What a mode means, in the ruleset agents enforce.
+
+    The stored ruleset keeps the admin's choices for Praktikum (chosen site
+    categories, added sites, allowed apps), so switching modes never loses
+    them. Ujian blocks every category plus the added sites; the agent itself
+    limits Ujian to the browsers and makes Bebas record-only
+    (``RuleSet.effective_whitelist_names`` / ``RuleSet.acts``).
+    """
+    if ruleset.mode is not EnforcementMode.EXAM:
+        return ruleset
+    every_category = rules_for([c.key for c in ALL_CATEGORIES])
+    known = {r.pattern for r in every_category}
+    added = tuple(r for r in custom_sites(ruleset) if r.pattern not in known)
+    return ruleset.model_copy(update={"site_blocklist": every_category + added})

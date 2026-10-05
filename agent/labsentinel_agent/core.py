@@ -120,7 +120,7 @@ class AgentCore:
     def sync_browser_policy(self) -> None:
         """Make the browser policy match the current state and ruleset.
 
-        Paused (or dry-run) means nothing is blocked: the policy is removed and
+        Paused, test mode or Bebas means nothing is blocked: the policy is removed and
         the institution's own policy restored. Enforcing re-applies it.
         """
         if self._policy is None:
@@ -129,7 +129,7 @@ class AgentCore:
         should_block = (
             self._rt.state is AgentState.ENFORCING
             and ruleset is not None
-            and not ruleset.dry_run
+            and ruleset.acts
             and bool(ruleset.site_blocklist)
         )
         try:
