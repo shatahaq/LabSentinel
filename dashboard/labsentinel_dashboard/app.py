@@ -55,6 +55,7 @@ EXPOSED = (
     "set_site_categories", "set_custom_sites", "set_close_grace",
     "start_session", "end_session", "schedule_session", "cancel_session", "list_sessions",
     "get_violations", "get_screenshot", "get_audit",
+    "get_pairing", "rotate_pairing_code", "set_pairing_open",
 )
 
 
@@ -189,7 +190,7 @@ class DashboardApp:
 
         bridge = UiBridge(
             service=self.service, sessions=self.sessions, rules=self.rules,
-            db=self.db, bus=self.bus, loop=self.loop,
+            db=self.db, bus=self.bus, loop=self.loop, pairing=self.pairing,
         )
         eel.init(str(WEB_DIR))
         for name in EXPOSED:
@@ -228,7 +229,8 @@ class DashboardApp:
         print(f"  Kode pemasangan agent   : {self.pairing.code}   (6 digit)")
         print(f"  Basis data              : {self.config.db_path}")
         print("=" * 66)
-        print("  Simpan token di atas; dibutuhkan saat memasang agent di PC lab.")
+        print("  Ketik kode di atas sekali saat memasang agent di PC lab.")
+        print("  Kode dan pendaftaran PC baru bisa diatur di halaman Aturan.")
         print()
 
     def shutdown(self) -> None:

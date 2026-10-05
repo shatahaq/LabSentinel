@@ -29,6 +29,7 @@ from collections.abc import Coroutine
 from typing import Any
 
 from labsentinel_dashboard.domain.events import EventBus
+from labsentinel_dashboard.domain.pairing import PairingService
 from labsentinel_dashboard.domain.rules_service import RulesService
 from labsentinel_dashboard.domain.service import CommandReport, DashboardService
 from labsentinel_dashboard.domain.session_presets import PROFILE_LABELS
@@ -54,12 +55,14 @@ class UiBridge:
         db: Database,
         bus: EventBus,
         loop: asyncio.AbstractEventLoop,
+        pairing: PairingService | None = None,
         actor: str = "pengawas",
     ) -> None:
         self._svc = service
         self._sessions = sessions
         self._rules = rules
         self._db = db
+        self._pairing = pairing
         self._loop = loop
         self._actor = actor
         self._events: deque[dict[str, Any]] = deque(maxlen=MAX_BUFFERED_EVENTS)
@@ -308,6 +311,47 @@ class UiBridge:
 
     def list_sessions(self) -> dict[str, Any]:
         return self._ok(sessions=[_session_dict(s) for s in self._db.list_sessions(limit=100)])
+
+    # ------------------------------------------------------------ pairing
+    def get_pairing(self) -> dict[str, Any]:
+        """The 6-digit code an admin types when installing an agent."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            return self._pairing_state()
+        except Exception:
+            log.exception("get_pairing failed")
+            return self._err("Gagal memuat kode pemasangan.")
+
+    def rotate_pairing_code(self) -> dict[str, Any]:
+        """Issue a fresh code. PCs that are already paired keep working."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            self._pairing.rotate_code(actor=self._actor)
+            return self._pairing_state()
+        except Exception:
+            log.exception("rotate_pairing_code failed")
+            return self._err("Gagal membuat kode baru.")
+
+    def set_pairing_open(self, open_: bool) -> dict[str, Any]:
+        """Open or close registration of new PCs."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            self._pairing.set_open(bool(open_), actor=self._actor)
+            return self._pairing_state()
+        except Exception:
+            log.exception("set_pairing_open failed")
+            return self._err("Gagal mengubah pendaftaran PC.")
+
+    def _pairing_state(self) -> dict[str, Any]:
+        assert self._pairing is not None
+        return self._ok(
+            code=self._pairing.code,
+            open=self._pairing.is_open,
+            paired_count=len(self._db.paired_agent_ids()),
+        )
 
     # ------------------------------------------------------------ history
     def get_violations(self, session_id: int | None = None, limit: int = 200) -> dict[str, Any]:

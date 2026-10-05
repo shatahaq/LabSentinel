@@ -50,5 +50,9 @@
     getViolations: (sessionId, limit) => call("get_violations", sessionId || null, limit || 200),
     getScreenshot: (id) => call("get_screenshot", id),
     getAudit: (limit) => call("get_audit", limit || 300),
+
+    getPairing: () => call("get_pairing"),
+    rotatePairingCode: () => call("rotate_pairing_code"),
+    setPairingOpen: (open) => call("set_pairing_open", !!open),
   };
 })(window);

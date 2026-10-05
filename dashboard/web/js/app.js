@@ -150,8 +150,9 @@
         body.innerHTML = `
           <ol style="padding-left:1.1rem;display:flex;flex-direction:column;gap:var(--s-4);margin:0">
             <li><strong>PC terhubung sendiri.</strong>
-              Pasang agent di PC peserta; agent menemukan dashboard ini lewat jaringan lab.
-              Alamat IP tidak perlu diatur.</li>
+              Pasang agent di PC peserta dengan kode pemasangan 6 digit (ada di halaman
+              Aturan); agent menemukan dashboard ini lewat jaringan lab. Alamat IP tidak
+              perlu diatur.</li>
             <li><strong>Mulai dari mode uji coba.</strong>
               Saat pertama dipasang, pelanggaran hanya dicatat dan tidak ada aplikasi yang
               ditutup. Coba dulu aturannya, baru tegakkan.</li>

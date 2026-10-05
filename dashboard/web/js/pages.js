@@ -22,6 +22,7 @@
     selecting: false,
     selected: new Set(),
     openAgent: null,
+    focusPairing: false,
   };
 
   /* ===================================================================
@@ -346,7 +347,9 @@
       host.appendChild(empty({
         iconName: "monitor",
         title: "Belum ada PC yang terhubung",
-        text: "Pasang dan jalankan agent di PC peserta. Agent akan menemukan dashboard ini sendiri lewat jaringan lab — alamat IP tidak perlu diatur.",
+        text: "Pasang agent di PC peserta dengan kode pemasangan 6 digit. Agent menemukan dashboard ini sendiri lewat jaringan lab — alamat IP tidak perlu diatur.",
+        actionLabel: "Lihat kode pemasangan",
+        onAction: () => { State.focusPairing = true; global.App.goto("aturan"); },
       }));
       return;
     }
@@ -713,7 +716,10 @@
               Peserta diberi waktu menyimpan pekerjaan sebelum aplikasi ditutup.</div>
           </label>
         </div>
-      </div>`;
+      </div>
+
+      <div class="card" id="pairing-card" style="margin-top:var(--s-4)"></div>`;
+    renderPairing();
 
     // modes
     $("#mode-row").innerHTML = res.modes.map((m) => `
@@ -798,6 +804,98 @@
         if (r.ok) toast("Tersimpan", "", "ok"); else toast("Gagal", r.error, "error");
       });
     });
+  }
+
+  /* Pemasangan PC: the 6-digit code an admin types once per lab PC. */
+  function groupCode(code) {
+    return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+  }
+
+  async function renderPairing() {
+    const host = $("#pairing-card");
+    if (!host) return;
+    const res = await API.getPairing();
+    if (!res.ok) {
+      host.innerHTML = `
+        <div class="card__head"><span class="card__title">Pemasangan PC baru</span></div>
+        <div class="card__body"></div>`;
+      host.querySelector(".card__body").appendChild(
+        empty({ iconName: "alert", title: "Kode pemasangan tidak dapat dimuat", text: res.error }));
+      return;
+    }
+
+    const open = res.open;
+    const state = open
+      ? `<span class="status status--online">${icon("dot", "status__icon")}Terbuka</span>`
+      : `<span class="status status--offline">${icon("lock", "status__icon")}Ditutup</span>`;
+
+    host.innerHTML = `
+      <div class="card__head">
+        <span class="card__title">Pemasangan PC baru</span>
+        <div class="card__actions">${state}</div>
+      </div>
+      <div class="card__body pairing">
+        <div class="pairing__code-block">
+          <div class="pairing__label" id="pair-code-label">Kode pemasangan</div>
+          <div class="pairing__code ${open ? "" : "is-closed"}" aria-labelledby="pair-code-label"
+               aria-describedby="pair-code-note">${esc(groupCode(res.code))}</div>
+          <div class="pairing__note" id="pair-code-note">${open
+            ? `${res.paired_count} PC sudah terpasang. Kode hanya dipakai sekali per PC.`
+            : `Pendaftaran ditutup: PC baru ditolak meskipun kodenya benar. ${res.paired_count} PC yang sudah terpasang tetap terhubung.`}</div>
+          <div class="pairing__actions">
+            <button class="btn btn--sm" id="pair-rotate" ${open ? "" : "disabled"}>Buat kode baru</button>
+            <button class="btn btn--sm" id="pair-toggle">${open ? "Tutup pendaftaran PC baru" : "Buka pendaftaran PC baru"}</button>
+          </div>
+        </div>
+        <div class="pairing__steps">
+          <div class="pairing__label">Cara memasang</div>
+          <ol class="steps">
+            <li>Pasang Lab Sentinel Agent di PC peserta.</li>
+            <li>Jalankan sekali dengan kode ini:
+              <code class="cmd">labsentinel-agent --pair ${esc(res.code)}</code></li>
+            <li>PC muncul di <strong>Layar PC</strong> dalam beberapa detik. Kode tidak perlu diketik lagi.</li>
+          </ol>
+          <p class="pairing__hint">Setelah semua PC lab terpasang, tutup pendaftaran agar tidak ada PC lain yang bisa ikut terhubung.</p>
+        </div>
+      </div>`;
+
+    $("#pair-rotate").addEventListener("click", async (e) => {
+      const ok = await confirm({
+        title: "Buat kode pemasangan baru?",
+        message: "Kode lama langsung tidak berlaku. PC yang sudah terpasang tidak terpengaruh.",
+        confirmLabel: "Buat kode baru",
+      });
+      if (!ok) return;
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.rotatePairingCode();
+        if (r.ok) { toast("Kode baru dibuat", groupCode(r.code), "ok"); renderPairing(); }
+        else toast("Gagal", r.error, "error");
+      });
+    });
+
+    $("#pair-toggle").addEventListener("click", async (e) => {
+      if (open) {
+        const ok = await confirm({
+          title: "Tutup pendaftaran PC baru?",
+          message: "PC yang belum terpasang tidak akan bisa terhubung sampai pendaftaran dibuka lagi. PC yang sudah terpasang tetap terhubung seperti biasa.",
+          confirmLabel: "Tutup pendaftaran",
+        });
+        if (!ok) return;
+      }
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.setPairingOpen(!open);
+        if (r.ok) {
+          toast(r.open ? "Pendaftaran dibuka" : "Pendaftaran ditutup",
+                r.open ? "PC baru bisa dipasang dengan kode." : "PC baru tidak bisa terhubung.", "ok");
+          renderPairing();
+        } else toast("Gagal", r.error, "error");
+      });
+    });
+
+    if (State.focusPairing) {
+      State.focusPairing = false;
+      host.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
   }
 
   function normalizeCat(category) {
