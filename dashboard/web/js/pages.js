@@ -340,7 +340,10 @@
   const liveCards = new Map();
   const shownSeq = new Map();
   let framePump = null;
+  let frameRequestInFlight = false;
   const FRAME_POLL_MS = 200;
+  // Set while a PC's detail is open: brings its status and buttons up to date.
+  let syncOpenDetail = null;
 
   function visibleAgents() {
     const q = State.search.trim().toLowerCase();
@@ -355,9 +358,11 @@
   function renderGrid() {
     const host = $("#pc-grid");
     const list = visibleAgents();
-    stopFrameWatching();
-    host.innerHTML = "";
 
+    if (!State.agents.length || !list.length) {
+      stopFrameWatching();
+      host.innerHTML = "";
+    }
     if (!State.agents.length) {
       host.appendChild(empty({
         iconName: "monitor",
@@ -379,10 +384,38 @@
       return;
     }
 
-    list.forEach((a) => host.appendChild(pcCard(a)));
-    startFrameWatching();
+    // Refresh in place: every card's details are rebuilt (status, tags, name),
+    // but a live screen already on show is carried over, so the grid never
+    // blanks while heartbeats keep it up to date.
+    const previous = new Map($$("#pc-grid .pc").map((n) => [n.dataset.agent, n]));
+    const cards = list.map((a) => {
+      const card = pcCard(a);
+      const old = previous.get(a.agent_id);
+      const img = old && hasLiveScreen(a) ? old.querySelector("[data-screen] img") : null;
+      if (img) adoptScreen(card, img);
+      else shownSeq.delete(a.agent_id);  // nothing on show: fetch at once
+      return card;
+    });
+    host.replaceChildren(...cards);
+    const shown = new Set(list.map((a) => a.agent_id));
+    [...shownSeq.keys()].forEach((id) => { if (!shown.has(id)) shownSeq.delete(id); });
+    watchCards(cards);
+    if (syncOpenDetail) syncOpenDetail();
     $("#monitoring-sub").textContent =
       `${list.length} dari ${State.agents.length} PC ditampilkan. Klik satu PC untuk melihat layarnya lebih besar.`;
+  }
+
+  /* A disconnected PC has no screen to show (the dashboard drops its last
+     frame), so its old picture must not be carried over. */
+  function hasLiveScreen(agent) {
+    return agent.status === "online" || agent.status === "paused";
+  }
+
+  function adoptScreen(card, img) {
+    const screen = card.querySelector("[data-screen]");
+    const placeholder = screen.querySelector(".pc__placeholder");
+    if (placeholder) placeholder.remove();
+    screen.insertBefore(img, screen.firstChild);
   }
 
   // A PC is highlighted only while it is misbehaving *now*. Highlighting every
@@ -454,15 +487,25 @@
 
   /* Live grid: one request fetches every new frame for the cards on screen
      (cards scrolled out of view are not asked for). */
-  function startFrameWatching() {
-    frameObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const id = entry.target.dataset.agent;
-        if (entry.isIntersecting) liveCards.set(id, entry.target);
-        else liveCards.delete(id);
-      });
-    }, { rootMargin: "120px" });
-    $$("#pc-grid .pc").forEach((n) => frameObserver.observe(n));
+  function onCardsVisible(entries) {
+    entries.forEach((entry) => {
+      const id = entry.target.dataset.agent;
+      if (entry.isIntersecting) liveCards.set(id, entry.target);
+      else liveCards.delete(id);
+    });
+  }
+
+  function watchCards(cards) {
+    if (frameObserver) frameObserver.disconnect();
+    else frameObserver = new IntersectionObserver(onCardsVisible, { rootMargin: "120px" });
+    // Cards that replaced visible ones stay live straight away; the observer
+    // corrects the set as soon as it has measured the new cards.
+    const wasLive = new Set(liveCards.keys());
+    liveCards.clear();
+    cards.forEach((card) => {
+      if (wasLive.has(card.dataset.agent)) liveCards.set(card.dataset.agent, card);
+      frameObserver.observe(card);
+    });
     if (!framePump) pumpFrames();
   }
 
@@ -470,13 +513,13 @@
     if (frameObserver) { frameObserver.disconnect(); frameObserver = null; }
     if (framePump) { clearTimeout(framePump); framePump = null; }
     liveCards.clear();
-    shownSeq.clear();  // re-rendered cards start empty: paint them at once
+    shownSeq.clear();  // the next grid starts empty: paint every card at once
   }
 
   async function pumpFrames() {
     framePump = setTimeout(pumpFrames, FRAME_POLL_MS);  // keep the beat
-    if (!liveCards.size || pumpFrames.busy) return;
-    pumpFrames.busy = true;
+    if (!liveCards.size || frameRequestInFlight) return;
+    frameRequestInFlight = true;
     try {
       const seen = {};
       liveCards.forEach((_, id) => { seen[id] = shownSeq.get(id) || 0; });
@@ -489,7 +532,7 @@
         shownSeq.set(f.agent_id, f.seq);
       });
     } finally {
-      pumpFrames.busy = false;
+      frameRequestInFlight = false;
     }
   }
 
@@ -581,13 +624,27 @@
   }
 
   /* ---- single PC ---- */
-  let detailTimer = null;
+  // Stops the PC detail on show (its frame timer and close watcher), if any.
+  let closeOpenDetail = null;
 
   function openPc(agentId) {
-    const agent = State.agents.find((a) => a.agent_id === agentId);
-    if (!agent) return;
+    const found = State.agents.find((a) => a.agent_id === agentId);
+    if (!found) return null;
+    // A confirmation replaces this view and reopens it afterwards: make sure
+    // the previous one's timer and watcher never outlive it.
+    if (closeOpenDetail) closeOpenDetail();
+    const agent = { ...found };
     State.openAgent = agentId;
     API.setViewing(true, agentId);
+
+    let detailTimer = null;
+    let paintFreeze = () => {};
+    // Confirmations take over the dialog; come back to this PC afterwards.
+    const confirmHere = async (options) => {
+      const ok = await confirm(options);
+      openPc(agentId);
+      return ok;
+    };
 
     const dialog = openDialog({
       title: agent.hostname || agentId,
@@ -624,7 +681,7 @@
         const resume = el('<button class="btn">Lanjutkan</button>');
         const lock = el('<button class="btn">Kunci layar</button>');
         const freeze = el('<button class="btn"></button>');
-        const paintFreeze = () => {
+        paintFreeze = () => {
           const frozen = !!agent.input_frozen;
           freeze.textContent = frozen ? "Cairkan input" : "Bekukan input";
           freeze.classList.toggle("btn--warn", frozen);
@@ -640,50 +697,69 @@
         resume.addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
           reportToast(await API.resume([agentId]), "Lanjutkan"); global.App.refresh();
         }));
-        lock.addEventListener("click", async (e) => {
-          const ok = await confirm({
+        lock.addEventListener("click", async () => {
+          const ok = await confirmHere({
             title: "Kunci layar PC ini?",
             message: "Peserta harus memasukkan kata sandi Windows untuk masuk kembali.",
             confirmLabel: "Kunci layar", danger: true,
           });
-          if (!ok) return;
-          await withBusy(e.currentTarget, async () => reportToast(await API.lockScreens([agentId]), "Kunci layar"));
+          if (ok) reportToast(await API.lockScreens([agentId]), "Kunci layar");
         });
         freeze.addEventListener("click", async (e) => {
           const turningOn = !agent.input_frozen;
-          if (turningOn) {
-            const ok = await confirm({
-              title: "Bekukan keyboard & mouse PC ini?",
-              message: "Peserta tidak bisa memakai keyboard dan mouse sampai Anda cairkan. "
-                + "Layar peserta menampilkan pesan bahwa PC dibekukan pengawas.",
-              confirmLabel: "Bekukan", danger: true,
-            });
-            if (!ok) return;
-          }
-          await withBusy(e.currentTarget, async () => {
+          const send = async () => {
             const res = await API.freezeInput(turningOn, [agentId]);
             reportToast(res, turningOn ? "Bekukan input" : "Cairkan input");
-            if (res.ok) { agent.input_frozen = turningOn; paintFreeze(); }
+            if (res.ok) setFrozen(agentId, turningOn);
             global.App.refresh();
+          };
+          if (!turningOn) {  // releasing needs no confirmation
+            await withBusy(e.currentTarget, send);
+            return;
+          }
+          const ok = await confirmHere({
+            title: "Bekukan keyboard & mouse PC ini?",
+            message: "Peserta tidak bisa memakai keyboard dan mouse sampai Anda cairkan. "
+              + "Layar peserta menampilkan pesan bahwa PC dibekukan pengawas.",
+            confirmLabel: "Bekukan", danger: true,
           });
+          if (ok) await send();
         });
         done.addEventListener("click", close);
         foot.append(pause, resume, lock, freeze, done);
       },
     });
 
+    // Keep the open view in step with heartbeats (status, freeze, facts).
+    syncOpenDetail = () => {
+      const latest = State.agents.find((a) => a.agent_id === agentId);
+      if (latest) Object.assign(agent, latest);
+      paintDetail(agent);
+      paintFreeze();
+    };
+
     // Stop the hi-res stream as soon as the admin closes the view.
     const scrim = $("#scrim");
-    const observer = new MutationObserver(() => {
-      if (scrim.hidden) {
-        observer.disconnect();
-        if (detailTimer) { clearInterval(detailTimer); detailTimer = null; }
-        State.openAgent = null;
-        API.setViewing(global.App.currentPage() === "monitoring", null);
-      }
-    });
+    const observer = new MutationObserver(() => { if (scrim.hidden) stop(); });
+    const stop = () => {
+      observer.disconnect();
+      clearInterval(detailTimer);
+      if (closeOpenDetail !== stop) return;  // already replaced by a newer view
+      closeOpenDetail = null;
+      syncOpenDetail = null;
+      State.openAgent = null;
+      API.setViewing(global.App.currentPage() === "monitoring", null);
+    };
+    closeOpenDetail = stop;
     observer.observe(scrim, { attributes: true, attributeFilter: ["hidden"] });
     return dialog;
+  }
+
+  /* Record a freeze change locally until the next heartbeat confirms it. */
+  function setFrozen(agentId, frozen) {
+    const a = State.agents.find((x) => x.agent_id === agentId);
+    if (a) a.input_frozen = frozen;
+    if (syncOpenDetail) syncOpenDetail();
   }
 
   function paintDetail(agent) {
@@ -1166,6 +1242,7 @@
     "command.pause.reapply": "Menjeda ulang PC yang tersambung kembali",
     "command.resume": "Melanjutkan PC",
     "command.lock_screen": "Mengunci layar",
+    "command.freeze_input": "Membekukan / mencairkan keyboard & mouse",
     "command.broadcast_message": "Mengirim pesan",
     "command.set_dry_run": "Mengubah mode uji coba",
     "command.set_stream": "Mengatur tampilan layar",
