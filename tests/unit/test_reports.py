@@ -138,7 +138,7 @@ def test_pdf_contains_the_story(db: Database, session_id: int) -> None:
         "UTS Pemrograman Dasar", "Ujian", "2 jam 15 menit",
         "LAB-A-01", "LAB-A-02", "steam.exe", "chat.openai.com",
         "Aplikasi ditutup", "Dugaan situs terlarang", "Agent dihentikan tidak wajar",
-        "mode uji coba", "judul", "Menjeda PC", "Halaman 1 dari",
+        "hanya dicatat", "judul", "Menjeda PC", "Halaman 1 dari",
         "Berkas bukti tidak ditemukan",  # missing evidence file is said, not crashed on
     ):
         assert expected in text, expected
@@ -200,7 +200,7 @@ def test_xlsx_has_real_dates_filters_and_every_record(db: Database, session_id: 
 
     summary = {r[0]: r[1] for r in wb["Ringkasan"].iter_rows(values_only=True) if r and r[0]}
     assert summary["Total pelanggaran"] == 5
-    assert summary["Hanya dicatat (mode uji coba)"] == 1
+    assert summary["Hanya dicatat (uji coba / Bebas)"] == 1
     assert summary["Mode"] == "Ujian"
 
     audit = list(wb["Catatan aktivitas"].iter_rows(min_row=2, values_only=True))

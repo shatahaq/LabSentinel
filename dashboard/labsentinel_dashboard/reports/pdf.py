@@ -228,8 +228,8 @@ def render_pdf(report: SessionReport, *, max_evidence: int = DEFAULT_MAX_EVIDENC
     notes: list[str] = []
     if report.dry_run_count:
         notes.append(
-            f"{report.dry_run_count} catatan terjadi saat mode uji coba: hanya dicatat, "
-            "aplikasi tidak ditutup dan situs tidak diblokir."
+            f"{report.dry_run_count} pelanggaran hanya dicatat (mode uji coba atau "
+            "mode Bebas): aplikasi tidak ditutup dan situs tidak diblokir."
         )
     if report.title_based_count:
         notes.append(
@@ -280,7 +280,7 @@ def render_pdf(report: SessionReport, *, max_evidence: int = DEFAULT_MAX_EVIDENC
         for v in report.violations:
             jenis = kind_label(v.kind)
             if v.dry_run:
-                jenis += " (uji coba)"
+                jenis += " (hanya dicatat)"
             rows.append([
                 _p(fmt_time(v.occurred_at), st["cell"]), _p(v.hostname or v.agent_id, st["cell"]),
                 _p(jenis, st["cell"]), _p(v.subject, st["cellb"]), _p(v.detail, st["small"]),

@@ -72,7 +72,7 @@ def render_xlsx(report: SessionReport) -> bytes:
         ("Laporan dibuat", _dt(report.generated_at)),
         ("Total pelanggaran", report.total),
         ("Saat aturan ditegakkan", report.total - report.dry_run_count),
-        ("Hanya dicatat (mode uji coba)", report.dry_run_count),
+        ("Hanya dicatat (uji coba / Bebas)", report.dry_run_count),
         ("Aplikasi ditutup otomatis", report.totals_by_kind.get("app_closed", 0)),
         ("Dikenali dari judul jendela (bisa keliru)", report.title_based_count),
         ("Agent dihentikan tidak wajar", report.tamper_count),
@@ -104,7 +104,7 @@ def render_xlsx(report: SessionReport) -> bytes:
     # ---- Per PC
     _sheet(
         wb.create_sheet("Per PC"),
-        ["PC", "ID agent", "Pengguna", "Jumlah", "Saat ditegakkan", "Saat uji coba",
+        ["PC", "ID agent", "Pengguna", "Jumlah", "Saat ditegakkan", "Hanya dicatat",
          *[kind_label(k) for k in sorted(report.totals_by_kind)], "Pertama", "Terakhir"],
         [
             [pc.hostname, pc.agent_id, pc.username, pc.total, pc.enforced,

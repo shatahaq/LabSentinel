@@ -113,7 +113,7 @@
         } else if (v.notify) {
           toast(
             `${v.hostname}: ${v.subject}`,
-            v.dry_run ? "Tercatat (mode uji coba)" : global.U.violationLabel(v.kind),
+            v.dry_run ? "Tercatat (tidak ditindak)" : global.U.violationLabel(v.kind),
             v.dry_run ? "warn" : "error"
           );
         }
