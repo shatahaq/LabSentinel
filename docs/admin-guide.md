@@ -57,10 +57,22 @@ kanan atas mengganti tema terang/gelap.
    Pemrograman Dasar - Kelas B"), pilih mode. (Sesi terjadwal yang mulai dan
    berakhir sendiri sudah didukung di sistem, tetapi belum bisa dibuat dari
    dashboard.)
-3. **Selama sesi** — pantau **Layar PC**. Klik satu PC untuk melihat layarnya
-   lebih besar. Tombol **Jeda semua / Lanjutkan semua** di kanan atas; untuk
-   beberapa PC saja, pakai **Pilih beberapa PC**. Anda juga bisa **mengunci
-   layar** atau **mengirim pesan** ke PC terpilih.
+3. **Selama sesi** — pantau **Layar PC**: semua PC tampil langsung dalam satu
+   grid (thumbnail diperbarui tiap beberapa detik), jadi seluruh lab terlihat
+   sekaligus. Klik satu PC untuk melihat layarnya lebih besar dan lebih mulus.
+   Tombol **Jeda semua / Lanjutkan semua** di kanan atas; untuk beberapa PC
+   saja, pakai **Pilih beberapa PC**. Anda juga bisa **mengunci layar** atau
+   **mengirim pesan** ke PC terpilih.
+
+   **Bekukan keyboard & mouse.** Untuk PC yang ketahuan melanggar, buka
+   detail PC itu lalu **Bekukan input**: keyboard dan mouse peserta berhenti
+   berfungsi sampai Anda tekan **Cairkan input**. Layar peserta menampilkan
+   pesan bahwa PC dibekukan pengawas (tidak pernah diam-diam), dan PC itu
+   ditandai **❄ Dibekukan** di grid. Pembekuan otomatis lepas bila Anda
+   menjeda PC itu atau agent berhenti, jadi peserta tidak akan terkunci
+   permanen; peserta juga selalu bisa menekan Ctrl+Alt+Del untuk melepaskannya
+   dalam keadaan darurat. Membekukan butuh **akses layar** ke PC itu (tombol
+   nonaktif bila "layar tidak terjangkau").
 4. **Akhiri sesi** — klik **Akhiri sesi** di Beranda.
 5. **Laporan** — buka **Laporan**, pilih sesinya, klik **Unduh PDF** atau
    **Unduh Excel**. Salinan juga tersimpan otomatis di

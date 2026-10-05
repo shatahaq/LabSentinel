@@ -32,6 +32,11 @@ Administrator) lewat [manual-test-checklist.md](manual-test-checklist.md):
   lain tidak diblokir situsnya; whitelist aplikasi yang menahannya (browser yang
   tidak diizinkan akan ditutup).
 - **Hanya sesi konsol** yang dipantau. Sesi Remote Desktop tidak.
+- **Bekukan input bisa dilepas peserta dengan Ctrl+Alt+Del.** Pembekuan
+  (`BlockInput`) sengaja dibuat demikian oleh Windows sebagai pengaman, jadi
+  ini penahan sementara saat pengawas mendekat, bukan kunci yang tak bisa
+  ditembus. Juga butuh desktop worker aktif di sesi peserta (sama seperti
+  tangkapan layar); bila "layar tidak terjangkau", membekukan tidak tersedia.
 - **Hanya monitor utama** yang ditangkap layarnya. Isi di monitor kedua tidak
   terlihat di dashboard maupun bukti.
 - **Satu dashboard, satu LAN.** Agent menemukan dashboard lewat broadcast UDP;

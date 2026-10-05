@@ -162,6 +162,12 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
 
 - [ ] 🖥️ Grid menampilkan thumbnail untuk semua PC lab; buka satu PC → gambar
   jelas dan lebih mulus. Tutup → kembali ke thumbnail.
+- [ ] 🖥️🔑 **Bekukan input:** di detail satu PC, **Bekukan input** → keyboard
+  dan mouse peserta berhenti, muncul notice layar penuh di PC peserta, dan PC
+  ditandai **❄ Dibekukan** di grid. **Cairkan input** → kembali normal.
+  Periksa pengaman: Ctrl+Alt+Del melepaskan pembekuan; menjeda PC itu atau
+  menghentikan service juga melepaskannya (peserta tidak terkunci permanen).
+  Belum teruji otomatis — `BlockInput` dan jendela notice Windows-only.
 - [ ] **Privasi:** jeda pemantauan → thumbnail berhenti diperbarui dan agent
   **berhenti menangkap layar** (periksa CPU agent turun). Pindah ke halaman
   selain "Layar PC" → streaming juga berhenti.
