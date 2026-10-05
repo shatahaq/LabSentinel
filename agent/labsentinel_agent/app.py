@@ -479,6 +479,8 @@ class LabSentinelAgent:
             current = proxy.session_id if proxy.connected else None
             if current is not None and current != seen:
                 log.info("desktop worker ready for session %s; checking running apps", current)
+                # A fresh worker does not hold the old one's input freeze.
+                await asyncio.to_thread(self.core.reassert_input_freeze)
                 await self.core.sweep_running()
             seen = current
             await asyncio.sleep(1.0)

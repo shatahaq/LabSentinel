@@ -114,6 +114,37 @@ async def test_pausing_releases_a_freeze(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_reassert_reapplies_an_active_freeze(tmp_path) -> None:
+    """A fresh desktop worker must take the freeze up again."""
+    d = FakeDesktop()
+    core = _core(tmp_path, d)
+    await _cmd(core, True)
+    d.calls.clear()
+    d.frozen = False  # the old worker died, releasing BlockInput
+    core.reassert_input_freeze()
+    assert d.calls == [True] and d.frozen is True and core.input_frozen() is True
+
+
+@pytest.mark.asyncio
+async def test_reassert_does_nothing_when_not_frozen(tmp_path) -> None:
+    d = FakeDesktop()
+    core = _core(tmp_path, d)
+    core.reassert_input_freeze()
+    assert d.calls == []
+
+
+@pytest.mark.asyncio
+async def test_reassert_that_fails_stops_claiming_frozen(tmp_path) -> None:
+    """If the new worker cannot hold it, do not keep reporting it as frozen."""
+    d = FakeDesktop()
+    core = _core(tmp_path, d)
+    await _cmd(core, True)
+    d._succeeds = False
+    core.reassert_input_freeze()
+    assert core.input_frozen() is False
+
+
+@pytest.mark.asyncio
 async def test_release_on_shutdown_is_best_effort(tmp_path) -> None:
     d = FakeDesktop()
     core = _core(tmp_path, d)

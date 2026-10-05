@@ -231,6 +231,22 @@ class AgentCore:
         if self._rt.input_frozen:
             self._set_frozen(False)
 
+    def reassert_input_freeze(self) -> None:
+        """Re-apply an active freeze, e.g. after the desktop worker restarted.
+
+        Windows drops ``BlockInput`` when the worker that held it exits, so a
+        PC meant to stay frozen would quietly come free. When a fresh worker is
+        available, hold it again; if that fails, stop claiming the PC is frozen.
+        """
+        if not self._rt.input_frozen or self._freeze is None:
+            return
+        try:
+            if not self._freeze(True):
+                self._rt.input_frozen = False
+        except Exception:
+            log.warning("could not re-apply the input freeze", exc_info=True)
+            self._rt.input_frozen = False
+
     # -- participant-visible status ----------------------------------------
     def set_connected(self, connected: bool) -> None:
         """Record dashboard connectivity and refresh the on-screen indicator."""
