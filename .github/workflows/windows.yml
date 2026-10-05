@@ -90,7 +90,15 @@ jobs:
           Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/LOG=dashboard-setup.log" -Wait
           $exe = "C:\Program Files\LabSentinel\Dashboard\labsentinel-dashboard.exe"
           if (-not (Test-Path $exe)) { throw "dashboard not installed" }
-          Start-Process $exe -ArgumentList "--keep-running","--no-browser" -RedirectStandardOutput dashboard.out -RedirectStandardError dashboard.err
+          # The runner ends every process a step started when the step ends,
+          # so start the dashboard through WMI: it then outlives this step
+          # and keeps running for the whole job, like on the supervisor's PC.
+          $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+            CommandLine = "`"$exe`" --keep-running --no-browser"
+            CurrentDirectory = "C:\Program Files\LabSentinel\Dashboard"
+          }
+          if ($r.ReturnValue -ne 0) { throw "could not start the dashboard ($($r.ReturnValue))" }
+          "dashboard pid $($r.ProcessId)"
           Start-Sleep -Seconds 15
           Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Out-Null
           "dashboard listening on 8765"
@@ -99,6 +107,9 @@ jobs:
       - name: UDP discovery diagnostics
         shell: pwsh
         run: |
+          Get-Process labsentinel-dashboard -ErrorAction Stop | Format-Table Id, ProcessName, SessionId
+          Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Out-Null
+          "dashboard still running after its step ended"
           Get-NetUDPEndpoint -LocalPort 50123 -ErrorAction SilentlyContinue |
             Select-Object LocalAddress, LocalPort, OwningProcess,
               @{n="Process"; e={(Get-Process -Id $_.OwningProcess).ProcessName}} | Format-Table -AutoSize
@@ -177,7 +188,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $files = @("agent-setup-gui.log", "agent-setup-silent.log", "dashboard.out", "dashboard.err",
+          $files = @("agent-setup-gui.log", "agent-setup-silent.log",
                      "C:\ProgramData\LabSentinel\agent\logs\agent.log",
                      "C:\ProgramData\LabSentinel\agent\logs\desktop-worker.log",
                      "C:\ProgramData\LabSentinel\agent\logs\setup.log",
@@ -211,7 +222,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force e2e-logs | Out-Null
-          Copy-Item *.log, dashboard.out, dashboard.err e2e-logs -ErrorAction SilentlyContinue
+          Copy-Item *.log e2e-logs -ErrorAction SilentlyContinue
           Copy-Item C:\ProgramData\LabSentinel\agent\logs\* e2e-logs -ErrorAction SilentlyContinue
           Copy-Item C:\ProgramData\LabSentinel\dashboard\logs\* e2e-logs -ErrorAction SilentlyContinue
           Copy-Item shots e2e-logs -Recurse -ErrorAction SilentlyContinue
