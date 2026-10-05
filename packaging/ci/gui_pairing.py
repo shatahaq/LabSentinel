@@ -21,10 +21,11 @@ from PIL import ImageGrab
 
 user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 DB = Path(r"C:\ProgramData\LabSentinel\dashboard\labsentinel.sqlite")
-TITLE_PREFIX = "Lab Sentinel Agent"
+TITLE_PREFIX = "Lab Sentinel Agent"  # the pairing window
+INSTALLER_TITLE = "Setup - Lab Sentinel Agent"  # Inno Setup's wizard
 
 
-def find_window(timeout: float) -> int:
+def find_window(timeout: float, prefix: str = TITLE_PREFIX) -> int:
     found: list[int] = []
     proto = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
@@ -33,7 +34,7 @@ def find_window(timeout: float) -> int:
             return True
         buf = ctypes.create_unicode_buffer(256)
         user32.GetWindowTextW(hwnd, buf, 256)
-        if buf.value.startswith(TITLE_PREFIX):
+        if buf.value.startswith(prefix):
             found.append(hwnd)
         return True
 
@@ -44,7 +45,7 @@ def find_window(timeout: float) -> int:
         if found:
             return found[0]
         time.sleep(1)
-    raise SystemExit("FAIL: the pairing window did not appear")
+    raise SystemExit(f"FAIL: no window titled {prefix!r} appeared")
 
 
 def shot(hwnd: int, out: Path, name: str) -> None:
@@ -91,6 +92,13 @@ def main() -> None:
     code, out = sys.argv[1], Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
     wrong = "100000" if code != "100000" else "100001"
+
+    # Inno Setup always shows "Ready to Install" when it is the only page:
+    # the one click an admin makes before the pairing window opens.
+    setup = find_window(timeout=120, prefix=INSTALLER_TITLE)
+    focus(setup)
+    shot(setup, out, "0-installer-siap-dipasang")
+    press(0x0D)  # Enter = Install
 
     hwnd = find_window(timeout=180)
     focus(hwnd)

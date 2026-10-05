@@ -72,7 +72,8 @@ Sebelum memasang ke seluruh lab:
 Salin `LabSentinelAgent-Setup-<versi>.exe` ke PC (flashdisk atau folder
 bersama), lalu:
 
-1. **Klik dua kali** installer, setujui permintaan Administrator (UAC).
+1. **Klik dua kali** installer, setujui permintaan Administrator (UAC), lalu
+   klik **Install**.
 2. Berkas tersalin, lalu jendela **Lab Sentinel Agent — Pasang PC ini**
    terbuka.
 3. Ketik **kode pemasangan** 6 digit dari dashboard (halaman Aturan), klik

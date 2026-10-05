@@ -3,7 +3,8 @@
 ; Built by packaging/build.py --installer, which passes AppVersion and DistDir.
 ;
 ; Interactive (one file to copy to each lab PC, double-click):
-;   UAC prompt -> files copied -> the pairing window opens (labsentinel-setup.exe):
+;   UAC prompt -> "Ready to Install", click Install (Inno always shows this page
+;   when it is the only one) -> files copied -> the pairing window opens:
 ;   type the 6-digit code from the dashboard -> paired, service installed and
 ;   started. Wrong code, closed registration or no dashboard are explained in
 ;   the window and can be retried there.
