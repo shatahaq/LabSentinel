@@ -258,3 +258,12 @@ def test_export_report_is_exposed_to_the_ui() -> None:
     from labsentinel_dashboard.app import EXPOSED
 
     assert "export_report" in EXPOSED
+
+
+def test_every_supervisor_command_has_a_plain_label() -> None:
+    """The activity log and reports never show a raw command code."""
+    from labsentinel_dashboard.reports.model import ACTION_LABELS
+    from labsentinel_shared.enums import CommandType
+
+    missing = [c.value for c in CommandType if f"command.{c.value}" not in ACTION_LABELS]
+    assert missing == []

@@ -104,6 +104,7 @@ class SimulatedPC:
             on_token_issued=self._store_token,
             # One PC shows how a lost desktop worker looks on the dashboard.
             desktop_access_provider=lambda: index != 6,
+            input_frozen_provider=lambda: self.frozen,
             state_provider=lambda: self.state,
             metrics_provider=lambda: (random.uniform(0.4, 1.9), random.uniform(38, 62),
                                       random.choice(["Google Chrome", "Visual Studio Code",
@@ -114,6 +115,7 @@ class SimulatedPC:
             backoff=BackoffPolicy(base_s=0.5, max_s=3.0, jitter_s=0.2),
         )
         self.ruleset: RuleSet | None = None
+        self.frozen = False
 
     def _store_token(self, token: str) -> None:
         self._token_file.parent.mkdir(parents=True, exist_ok=True)
@@ -125,6 +127,9 @@ class SimulatedPC:
     async def on_command(self, cmd: CommandPayload) -> CommandResult:
         if cmd.command is CommandType.PAUSE:
             self.state = AgentState.PAUSED
+            self.frozen = False  # like the real agent: pausing releases a freeze
+        elif cmd.command is CommandType.FREEZE_INPUT:
+            self.frozen = cmd.text.strip().lower() != "off"
         elif cmd.command is CommandType.RESUME:
             self.state = AgentState.ENFORCING
         elif cmd.command is CommandType.SET_STREAM:

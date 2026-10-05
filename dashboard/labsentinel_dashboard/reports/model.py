@@ -37,6 +37,7 @@ ACTION_LABELS: dict[str, str] = {
     "command.pause.reapply": "Menjeda ulang PC yang tersambung kembali",
     "command.resume": "Melanjutkan PC",
     "command.lock_screen": "Mengunci layar",
+    "command.freeze_input": "Membekukan / mencairkan keyboard & mouse",
     "command.broadcast_message": "Mengirim pesan",
     "command.set_dry_run": "Mengubah mode uji coba",
     "command.set_stream": "Mengatur tampilan layar",

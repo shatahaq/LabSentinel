@@ -185,6 +185,19 @@ async def test_freeze_input_sends_the_command(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_confirmed_freeze_is_shown_before_the_next_heartbeat(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    await _connect(svc, link, "pc-02", behaviour="fail")
+    report = await svc.freeze_input(["pc-01", "pc-02"], True, actor="dosen")
+    assert report.succeeded == ["pc-01"]
+    assert svc.agent("pc-01").input_frozen is True
+    assert svc.agent("pc-02").input_frozen is False  # it said no: not shown frozen
+    await svc.freeze_input(["pc-01"], False, actor="dosen")
+    assert svc.agent("pc-01").input_frozen is False
+
+
+@pytest.mark.asyncio
 async def test_signed_in_participant_replaces_the_service_account(tmp_path: Path) -> None:
     db, _, _, svc, link, _ = _build(tmp_path)
     await _connect(svc, link, "pc-01")  # HELLO from a service: no one signed in yet

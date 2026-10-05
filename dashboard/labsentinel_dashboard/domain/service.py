@@ -411,8 +411,12 @@ class DashboardService:
     async def freeze_input(
         self, agent_ids: Iterable[str] | None, on: bool, *, actor: str
     ) -> CommandReport:
-        """Freeze or release the keyboard and mouse on the given PCs."""
-        return await self._dispatch(
+        """Freeze or release the keyboard and mouse on the given PCs.
+
+        A PC that confirmed (ACK) has carried it out, so its state is shown at
+        once rather than after its next heartbeat.
+        """
+        report = await self._dispatch(
             self._resolve(agent_ids),
             CommandPayload(
                 command=CommandType.FREEZE_INPUT, text="on" if on else "off", issued_by=actor
@@ -420,6 +424,12 @@ class DashboardService:
             actor=actor,
             details={"on": on},
         )
+        for agent_id in report.succeeded:
+            view = self._views.get(agent_id)
+            if view is not None and view.input_frozen != on:
+                view.input_frozen = on
+                self._publish_agent(view)
+        return report
 
     async def broadcast(
         self, agent_ids: Iterable[str] | None, text: str, *, actor: str
