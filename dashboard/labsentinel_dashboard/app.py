@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from labsentinel_dashboard.domain.events import EventBus
+from labsentinel_dashboard.domain.pairing import PairingService
 from labsentinel_dashboard.domain.rules_service import RulesService
 from labsentinel_dashboard.domain.service import DashboardService
 from labsentinel_dashboard.domain.session_presets import PROFILE_LABELS  # noqa: F401
@@ -40,7 +41,6 @@ from labsentinel_shared.config import DashboardConfig, load_dashboard_config
 from labsentinel_shared.discovery import Beacon, DashboardBeaconServer
 from labsentinel_shared.logging_setup import setup_logging
 from labsentinel_shared.rules import RuleSet
-from labsentinel_shared.security import generate_token, hash_token, verify_token
 
 log = logging.getLogger("labsentinel.dashboard.app")
 
@@ -82,24 +82,6 @@ def local_ip() -> str:
         sock.close()
 
 
-def ensure_token(config: DashboardConfig) -> str:
-    """Return the raw pairing token, creating it on first run.
-
-    Only the hash is persisted on the dashboard. The raw token is written once,
-    next to it, so the admin can copy it onto lab PCs during installation.
-    """
-    hash_file = config.token_hash_file
-    raw_file = hash_file.parent / "pairing_token.txt"
-    if hash_file.exists() and raw_file.exists():
-        return raw_file.read_text(encoding="utf-8").strip()
-    token = generate_token()
-    hash_file.parent.mkdir(parents=True, exist_ok=True)
-    hash_file.write_text(hash_token(token), encoding="utf-8")
-    raw_file.write_text(token, encoding="utf-8")
-    log.info("created a new pairing token at %s", raw_file)
-    return token
-
-
 class DashboardApp:
     def __init__(self, config: DashboardConfig) -> None:
         self.config = config
@@ -122,8 +104,7 @@ class DashboardApp:
         self.sessions = SessionService(
             db=self.db, service=self.service, rules=self.rules, bus=self.bus
         )
-        self.token = ensure_token(config)
-        self._token_hash = hash_token(self.token)
+        self.pairing = PairingService(self.db)
         self.loop = asyncio.new_event_loop()
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
@@ -154,7 +135,7 @@ class DashboardApp:
         self._server = WebSocketServer(
             host=self.config.ws_host,
             port=self.config.ws_port,
-            token_verifier=lambda t: verify_token(t, self._token_hash),
+            authenticator=self.pairing,
             ruleset_provider=self.rules.ruleset_for,
             events=self.service,
             heartbeat_interval_s=5.0,
@@ -244,7 +225,7 @@ class DashboardApp:
         print("=" * 66)
         print(f"  Antarmuka admin : http://{self.config.eel_host}:{self.config.eel_port}")
         print(f"  Alamat untuk PC peserta : ws://{self.config.advertise_host or local_ip()}:{port}")
-        print(f"  Token pemasangan agent  : {self.token}")
+        print(f"  Kode pemasangan agent   : {self.pairing.code}   (6 digit)")
         print(f"  Basis data              : {self.config.db_path}")
         print("=" * 66)
         print("  Simpan token di atas; dibutuhkan saat memasang agent di PC lab.")

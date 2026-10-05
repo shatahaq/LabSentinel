@@ -14,6 +14,7 @@ import time
 import pytest
 import websockets
 
+from auth_helpers import SharedTokenAuth
 from labsentinel_agent.transport.client import (
     AgentIdentity,
     BackoffPolicy,
@@ -33,12 +34,10 @@ from labsentinel_shared.protocol import (
     encode,
 )
 from labsentinel_shared.rules import RuleSet
-from labsentinel_shared.security import hash_token, verify_token
 
 pytestmark = pytest.mark.integration
 
 TOKEN = "integration-test-token"
-TOKEN_HASH = hash_token(TOKEN)
 
 
 class CollectingEvents:
@@ -100,7 +99,7 @@ async def _start_server(events: CollectingEvents, ruleset: RuleSet) -> WebSocket
     server = WebSocketServer(
         host="127.0.0.1",
         port=0,
-        token_verifier=lambda t: verify_token(t, TOKEN_HASH),
+        authenticator=SharedTokenAuth(TOKEN),
         ruleset_provider=lambda hello: ruleset,
         events=events,
         reply_token=TOKEN,

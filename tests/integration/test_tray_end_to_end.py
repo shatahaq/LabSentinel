@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from auth_helpers import SharedTokenAuth
 from labsentinel_agent.core import AgentCore, RuntimeState, _Detector
 from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.matcher import WhitelistMatcher
@@ -29,7 +30,6 @@ from labsentinel_dashboard.storage.db import Database
 from labsentinel_dashboard.transport.server import WebSocketServer
 from labsentinel_shared.enums import AgentState, EnforcementMode
 from labsentinel_shared.rules import RuleSet
-from labsentinel_shared.security import hash_token, verify_token
 
 pytestmark = pytest.mark.integration
 TOKEN = "tray-e2e-token"
@@ -73,7 +73,7 @@ async def test_dashboard_pause_reaches_participant_icon(tmp_path: Path) -> None:
     )
     server = WebSocketServer(
         host="127.0.0.1", port=0,
-        token_verifier=lambda t: verify_token(t, hash_token(TOKEN)),
+        authenticator=SharedTokenAuth(TOKEN),
         ruleset_provider=rules.ruleset_for, events=service, reply_token=TOKEN,
         heartbeat_interval_s=0.2,
     )

@@ -49,7 +49,33 @@ from labsentinel_shared.security import ReplayGuard
 log = logging.getLogger("labsentinel.dashboard.server")
 
 RulesetProvider = Callable[[HelloPayload], RuleSet]
-TokenVerifier = Callable[[str | None], bool]
+
+
+@dataclass(frozen=True)
+class AuthResult:
+    """Outcome of authenticating a HELLO."""
+
+    ok: bool
+    issued_token: str | None = None  # set when this HELLO completed pairing
+    reason: str = ""
+
+
+class Authenticator(Protocol):
+    """Decides whether an agent may join, and with which credential.
+
+    Separated from the transport so pairing policy (short code, rate limits,
+    per-agent tokens) lives in the domain and can be tested on its own.
+    """
+
+    def authenticate_hello(
+        self, hello: HelloPayload, token: str | None, *, source: str
+    ) -> AuthResult:
+        """Authenticate a first message: existing token, or a pairing code."""
+        ...
+
+    def authenticate_message(self, agent_id: str, token: str | None) -> bool:
+        """Authenticate every subsequent message from an established session."""
+        ...
 
 
 class ServerEvents(Protocol):
@@ -100,7 +126,7 @@ class WebSocketServer:
         *,
         host: str = "0.0.0.0",
         port: int = 8765,
-        token_verifier: TokenVerifier,
+        authenticator: Authenticator,
         ruleset_provider: RulesetProvider,
         events: ServerEvents,
         reply_token: str | None = None,
@@ -109,7 +135,7 @@ class WebSocketServer:
     ) -> None:
         self._host = host
         self._port = port
-        self._verify = token_verifier
+        self._auth = authenticator
         self._ruleset_for = ruleset_provider
         self._events = events
         self._reply_token = reply_token
@@ -196,15 +222,18 @@ class WebSocketServer:
         if not isinstance(env.payload, HelloPayload):
             await self._reject(conn, "first message must be hello")
             return None
-        if not self._verify(env.token):
-            log.warning("rejected agent from %s: bad token", remote)
-            await self._reject(conn, "authentication failed")
-            return None
         if not self._replay.check(env.id, env.ts):
             await self._reject(conn, "replayed or stale hello")
             return None
 
         hello = env.payload
+        # The envelope token is the agent's own credential once paired; the
+        # pairing code inside the payload is only for first contact.
+        auth = self._auth.authenticate_hello(hello, env.token, source=_host_of(remote))
+        if not auth.ok:
+            log.warning("rejected agent from %s: %s", remote, auth.reason or "auth failed")
+            await self._reject(conn, auth.reason or "authentication failed")
+            return None
         session = AgentSession(
             agent_id=hello.agent_id,
             hostname=hello.hostname,
@@ -229,6 +258,8 @@ class WebSocketServer:
                 server_time=time.time(),
                 heartbeat_interval_s=self._hb_interval,
                 ruleset=ruleset,
+                # Present only when this HELLO completed pairing.
+                agent_token=auth.issued_token,
             ),
             token=self._reply_token,
         )
@@ -242,7 +273,7 @@ class WebSocketServer:
         except ProtocolError as exc:
             log.warning("dropping bad message from %s: %s", session.agent_id, exc)
             return
-        if not self._verify(env.token):
+        if not self._auth.authenticate_message(session.agent_id, env.token):
             log.warning("dropping unauthenticated message from %s", session.agent_id)
             return
         if not self._replay.check(env.id, env.ts):
@@ -283,6 +314,11 @@ class WebSocketServer:
                 )
             )
             await conn.close()
+
+
+def _host_of(remote: str) -> str:
+    """Strip the port, so rate limiting keys on the machine, not the socket."""
+    return remote.rsplit(":", 1)[0] if ":" in remote else remote
 
 
 def _peer(conn: ServerConnection) -> str:

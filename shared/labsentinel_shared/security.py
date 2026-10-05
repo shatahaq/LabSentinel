@@ -17,10 +17,96 @@ import secrets
 import time
 from collections import OrderedDict
 
+__all__ = [
+    "PAIRING_CODE_DIGITS",
+    "RateLimiter",
+    "ReplayGuard",
+    "code_matches",
+    "generate_pairing_code",
+    "generate_token",
+    "hash_token",
+    "verify_token",
+]
+
+
+PAIRING_CODE_DIGITS = 6
+
 
 def generate_token(nbytes: int = 32) -> str:
-    """Create a fresh, URL-safe pairing token."""
+    """Create a fresh, URL-safe token (the long-lived per-agent credential)."""
     return secrets.token_urlsafe(nbytes)
+
+
+def generate_pairing_code(digits: int = PAIRING_CODE_DIGITS) -> str:
+    """Create a short numeric code an admin can read out and type.
+
+    A 6-digit code has only a million possibilities, so it is deliberately
+    **not** the long-lived credential: it is presented once during installation
+    and exchanged for a strong per-agent token. Attempts against it are rate
+    limited (:class:`RateLimiter`), which is what makes a short code safe here.
+    """
+    if not 4 <= digits <= 12:
+        raise ValueError("pairing code must be 4-12 digits")
+    low = 10 ** (digits - 1)
+    high = 10**digits - 1
+    return str(secrets.randbelow(high - low + 1) + low)
+
+
+def code_matches(presented: str | None, expected: str) -> bool:
+    """Constant-time comparison of a pairing code (whitespace/dashes ignored)."""
+    if not presented:
+        return False
+    cleaned = "".join(ch for ch in presented if ch.isdigit())
+    return hmac.compare_digest(cleaned, expected)
+
+
+class RateLimiter:
+    """Sliding-window limiter that locks out a source after repeated failures.
+
+    Used to make a short pairing code impractical to guess: a handful of wrong
+    codes from one machine triggers a lockout, so a million-guess sweep would
+    take far longer than any exam session.
+    """
+
+    def __init__(
+        self, *, max_failures: int = 5, window_s: float = 300.0, lockout_s: float = 900.0
+    ) -> None:
+        self._max = max_failures
+        self._window = window_s
+        self._lockout = lockout_s
+        self._failures: dict[str, list[float]] = {}
+        self._locked_until: dict[str, float] = {}
+
+    def is_locked(self, key: str, *, now: float | None = None) -> bool:
+        current = time.time() if now is None else now
+        until = self._locked_until.get(key)
+        if until is None:
+            return False
+        if current >= until:
+            del self._locked_until[key]
+            self._failures.pop(key, None)
+            return False
+        return True
+
+    def record_failure(self, key: str, *, now: float | None = None) -> bool:
+        """Record a failed attempt. Returns True if this triggered a lockout."""
+        current = time.time() if now is None else now
+        recent = [t for t in self._failures.get(key, []) if current - t < self._window]
+        recent.append(current)
+        self._failures[key] = recent
+        if len(recent) >= self._max:
+            self._locked_until[key] = current + self._lockout
+            return True
+        return False
+
+    def record_success(self, key: str) -> None:
+        self._failures.pop(key, None)
+        self._locked_until.pop(key, None)
+
+    def retry_after(self, key: str, *, now: float | None = None) -> float:
+        current = time.time() if now is None else now
+        until = self._locked_until.get(key)
+        return max(0.0, until - current) if until else 0.0
 
 
 def hash_token(token: str) -> str:

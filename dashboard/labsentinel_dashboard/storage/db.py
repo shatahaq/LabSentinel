@@ -102,6 +102,14 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- One credential per PC, stored hashed. The raw token exists only on that PC,
+-- so a token taken from one machine cannot impersonate another.
+CREATE TABLE IF NOT EXISTS agent_tokens (
+    agent_id   TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL,
+    issued_at  REAL NOT NULL
+);
 """
 
 
@@ -222,6 +230,29 @@ class Database:
             c.execute(
                 "UPDATE agents SET group_name = ? WHERE agent_id = ?", (group_name, agent_id)
             )
+
+    # -- per-agent credentials ------------------------------------------------
+    def set_agent_token_hash(self, agent_id: str, token_hash: str) -> None:
+        with self._tx() as c:
+            c.execute(
+                "INSERT INTO agent_tokens(agent_id, token_hash, issued_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(agent_id) DO UPDATE SET "
+                "token_hash = excluded.token_hash, issued_at = excluded.issued_at",
+                (agent_id, token_hash, time.time()),
+            )
+
+    def get_agent_token_hash(self, agent_id: str) -> str | None:
+        rows = self._query(
+            "SELECT token_hash FROM agent_tokens WHERE agent_id = ?", (agent_id,)
+        )
+        return str(rows[0]["token_hash"]) if rows else None
+
+    def delete_agent_token(self, agent_id: str) -> None:
+        with self._tx() as c:
+            c.execute("DELETE FROM agent_tokens WHERE agent_id = ?", (agent_id,))
+
+    def paired_agent_ids(self) -> list[str]:
+        return [str(r["agent_id"]) for r in self._query("SELECT agent_id FROM agent_tokens")]
 
     def list_agents(self) -> list[dict[str, Any]]:
         return [dict(r) for r in self._query("SELECT * FROM agents ORDER BY hostname")]

@@ -56,6 +56,9 @@ class HelloPayload(_Payload):
     agent_version: str = Field(default="0.0.0", max_length=32)
     os_version: str = Field(default="", max_length=64)
     cached_rule_revision: int = Field(default=-1, ge=-1)
+    # Sent only on first contact, when the agent has no token yet. The short
+    # code is exchanged for a strong per-agent token (see WelcomePayload).
+    pairing_code: str | None = Field(default=None, max_length=32, repr=False)
 
 
 class HeartbeatPayload(_Payload):
@@ -120,6 +123,9 @@ class WelcomePayload(_Payload):
     server_time: float
     heartbeat_interval_s: float = Field(default=5.0, gt=0, le=60)
     ruleset: RuleSet
+    # Present only right after a successful pairing: the long-lived credential
+    # this agent must store and use from now on. Never logged.
+    agent_token: str | None = Field(default=None, repr=False)
 
 
 class RejectPayload(_Payload):
@@ -190,6 +196,10 @@ class Envelope(BaseModel):
             for big in ("screenshot_b64", "jpeg_b64"):
                 if payload.get(big):
                     payload[big] = f"<{len(payload[big])} b64 chars elided>"
+            # Credentials must never reach a log file, not even partially.
+            for secret in ("pairing_code", "agent_token"):
+                if payload.get(secret):
+                    payload[secret] = "<redacted>"
         return data
 
 

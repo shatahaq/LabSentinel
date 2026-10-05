@@ -12,6 +12,7 @@ import contextlib
 
 import pytest
 
+from auth_helpers import SharedTokenAuth
 from labsentinel_agent.core import AgentCore, RuntimeState, _Detector
 from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
@@ -29,7 +30,6 @@ from labsentinel_shared.protocol import (
     ViolationPayload,
 )
 from labsentinel_shared.rules import AppRule, RuleSet
-from labsentinel_shared.security import hash_token, verify_token
 
 pytestmark = pytest.mark.integration
 
@@ -144,7 +144,7 @@ async def test_core_end_to_end(tmp_path) -> None:
     initial = RuleSet(revision=1, dry_run=True, app_whitelist=(AppRule(process_name="code.exe"),))
     server = WebSocketServer(
         host="127.0.0.1", port=0,
-        token_verifier=lambda t: verify_token(t, hash_token(TOKEN)),
+        authenticator=SharedTokenAuth(TOKEN),
         ruleset_provider=lambda hello: initial,
         events=events, reply_token=TOKEN, heartbeat_interval_s=0.5,
     )

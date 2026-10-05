@@ -82,7 +82,9 @@ class DashboardClient:
         self,
         *,
         identity: AgentIdentity,
-        token: str,
+        token: str | None,
+        pairing_code: str | None = None,
+        on_token_issued: Callable[[str], None] | None = None,
         state_provider: StateProvider,
         metrics_provider: MetricsProvider,
         on_ruleset: RulesetHandler,
@@ -94,6 +96,8 @@ class DashboardClient:
     ) -> None:
         self._id = identity
         self._token = token
+        self._pairing_code = pairing_code
+        self._on_token_issued = on_token_issued
         self._state = state_provider
         self._metrics = metrics_provider
         self._on_ruleset = on_ruleset
@@ -150,11 +154,25 @@ class DashboardClient:
                     agent_version=self._id.agent_version,
                     os_version=self._id.os_version,
                     cached_rule_revision=self._cached_rev(),
+                    # Only sent while we have no token of our own yet.
+                    pairing_code=None if self._token else self._pairing_code,
                 ),
             )
             welcome = await self._await_welcome(conn)
             if welcome is None:
                 return
+            if welcome.agent_token:
+                # Pairing succeeded: adopt and persist our own credential, so
+                # the short pairing code is never needed again.
+                self._token = welcome.agent_token
+                self._pairing_code = None
+                if self._on_token_issued is not None:
+                    try:
+                        self._on_token_issued(welcome.agent_token)
+                    except Exception:
+                        log.exception("could not store the issued agent token")
+                log.info("paired with the dashboard; credential stored")
+
             # Mark connected before applying rules: the socket is live, so a
             # sweep triggered by the initial ruleset can already send events.
             self._hb_interval = welcome.heartbeat_interval_s
