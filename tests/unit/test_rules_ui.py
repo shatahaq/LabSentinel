@@ -50,7 +50,8 @@ def setup(tmp_path: Path) -> Iterator[tuple[UiBridge, RulesService, PushRecorder
 
 
 def test_rule_methods_are_exposed_to_the_ui() -> None:
-    for name in ("set_mode", "set_whitelist", "set_site_categories", "set_custom_sites"):
+    for name in ("set_mode", "set_whitelist", "set_site_categories", "set_custom_sites",
+                 "freeze_input"):
         assert name in EXPOSED
 
 

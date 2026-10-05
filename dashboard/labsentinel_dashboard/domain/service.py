@@ -108,6 +108,8 @@ class AgentView:
     # False when the agent cannot see the desktop (service without its desktop
     # worker): no screen, no titles, apps are not closed. See ADR-0006.
     desktop_access: bool = True
+    # True while the supervisor has frozen this PC's keyboard and mouse.
+    input_frozen: bool = False
 
     @property
     def status(self) -> ConnectionStatus:
@@ -280,6 +282,7 @@ class DashboardService:
         view.active_window_title = hb.active_window_title
         view.indicator_visible = hb.indicator_visible
         view.desktop_access = hb.desktop_access
+        view.input_frozen = hb.input_frozen
         if hb.username is not None and hb.username != view.username:
             view.username = hb.username  # someone signed in or out at that PC
             self._db.set_agent_username(agent_id, hb.username)
@@ -381,6 +384,19 @@ class DashboardService:
             self._resolve(agent_ids),
             CommandPayload(command=CommandType.LOCK_SCREEN, issued_by=actor),
             actor=actor,
+        )
+
+    async def freeze_input(
+        self, agent_ids: Iterable[str] | None, on: bool, *, actor: str
+    ) -> CommandReport:
+        """Freeze or release the keyboard and mouse on the given PCs."""
+        return await self._dispatch(
+            self._resolve(agent_ids),
+            CommandPayload(
+                command=CommandType.FREEZE_INPUT, text="on" if on else "off", issued_by=actor
+            ),
+            actor=actor,
+            details={"on": on},
         )
 
     async def broadcast(

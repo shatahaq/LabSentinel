@@ -34,6 +34,7 @@
     pause: (ids) => call("pause", ids || null),
     resume: (ids) => call("resume", ids || null),
     lockScreens: (ids) => call("lock_screens", ids || null),
+    freezeInput: (on, ids) => call("freeze_input", on, ids || null),
     broadcast: (text, ids) => call("broadcast", text, ids || null),
 
     getRules: () => call("get_rules"),

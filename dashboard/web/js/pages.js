@@ -402,6 +402,7 @@
             ? '<div class="pc__overlay"><span class="pc__tag">layar tidak terjangkau</span></div>'
             : a.indicator_visible === false
               ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
+          ${a.input_frozen ? '<span class="pc__frozen">❄ Dibekukan</span>' : ""}
         </div>
         <div class="pc__meta">
           <div style="min-width:0">
@@ -603,6 +604,16 @@
         const pause = el('<button class="btn">Jeda PC ini</button>');
         const resume = el('<button class="btn">Lanjutkan</button>');
         const lock = el('<button class="btn">Kunci layar</button>');
+        const freeze = el('<button class="btn"></button>');
+        const paintFreeze = () => {
+          const frozen = !!agent.input_frozen;
+          freeze.textContent = frozen ? "Cairkan input" : "Bekukan input";
+          freeze.classList.toggle("btn--warn", frozen);
+          // No desktop worker means no way to freeze this PC right now.
+          freeze.disabled = agent.desktop_access === false;
+          freeze.title = freeze.disabled ? "Layar PC ini sedang tidak terjangkau" : "";
+        };
+        paintFreeze();
         const done = el('<button class="btn btn--primary">Tutup</button>');
         pause.addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
           reportToast(await API.pause([agentId]), "Jeda"); global.App.refresh();
@@ -619,8 +630,26 @@
           if (!ok) return;
           await withBusy(e.currentTarget, async () => reportToast(await API.lockScreens([agentId]), "Kunci layar"));
         });
+        freeze.addEventListener("click", async (e) => {
+          const turningOn = !agent.input_frozen;
+          if (turningOn) {
+            const ok = await confirm({
+              title: "Bekukan keyboard & mouse PC ini?",
+              message: "Peserta tidak bisa memakai keyboard dan mouse sampai Anda cairkan. "
+                + "Layar peserta menampilkan pesan bahwa PC dibekukan pengawas.",
+              confirmLabel: "Bekukan", danger: true,
+            });
+            if (!ok) return;
+          }
+          await withBusy(e.currentTarget, async () => {
+            const res = await API.freezeInput(turningOn, [agentId]);
+            reportToast(res, turningOn ? "Bekukan input" : "Cairkan input");
+            if (res.ok) { agent.input_frozen = turningOn; paintFreeze(); }
+            global.App.refresh();
+          });
+        });
         done.addEventListener("click", close);
-        foot.append(pause, resume, lock, done);
+        foot.append(pause, resume, lock, freeze, done);
       },
     });
 
@@ -651,6 +680,7 @@
       ["Akses layar", agent.desktop_access === false
         ? "Tidak terjangkau — layar, judul jendela, dan penutupan aplikasi tidak berjalan"
         : "Normal"],
+      ["Input peserta", agent.input_frozen ? "Dibekukan pengawas" : "Normal"],
     ];
     const host = $("#detail-facts");
     if (host) {

@@ -67,7 +67,7 @@ WEB_DIR = _web_dir()
 # to the browser by accident.
 EXPOSED = (
     "poll_events", "get_overview", "get_agents", "get_frame", "set_viewing",
-    "pause", "resume", "lock_screens", "broadcast",
+    "pause", "resume", "lock_screens", "freeze_input", "broadcast",
     "get_rules", "set_mode", "set_dry_run", "set_whitelist",
     "set_site_categories", "set_custom_sites", "set_close_grace",
     "start_session", "end_session", "schedule_session", "cancel_session", "list_sessions",

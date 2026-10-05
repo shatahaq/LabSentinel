@@ -498,6 +498,23 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
   backdrop-filter: blur(2px);
 }
 
+.pc__frozen {
+  position: absolute;
+  inset: var(--s-2) var(--s-2) auto auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(37, 99, 235, 0.92);
+  color: #fff;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+
+.btn--warn {
+  background: var(--warn-subtle);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+
 .pc__meta {
   display: flex;
   align-items: center;

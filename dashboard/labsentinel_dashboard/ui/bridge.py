@@ -184,6 +184,11 @@ class UiBridge:
     def lock_screens(self, agent_ids: list[str] | None = None) -> dict[str, Any]:
         return self._command(lambda: self._svc.lock_screens(agent_ids, actor=self._actor))
 
+    def freeze_input(self, on: bool, agent_ids: list[str] | None = None) -> dict[str, Any]:
+        return self._command(
+            lambda: self._svc.freeze_input(agent_ids, bool(on), actor=self._actor)
+        )
+
     def broadcast(self, text: str, agent_ids: list[str] | None = None) -> dict[str, Any]:
         return self._command(lambda: self._svc.broadcast(agent_ids, str(text), actor=self._actor))
 
