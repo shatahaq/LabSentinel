@@ -84,7 +84,8 @@ class _Freezer:
         notice window this thread pumps keeps painting while the participant's
         input is held.
         """
-        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # windll exists only on Windows: the ignore is needed elsewhere only.
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined, unused-ignore]
         window = None
         try:
             window = _NoticeWindow(notice)
