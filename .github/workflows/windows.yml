@@ -215,9 +215,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/screenshots/windows
           git commit -m "Screenshots from the Windows end-to-end run [skip ci]" -m "Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          if ($LASTEXITCODE -ne 0) { throw "no screenshots were committed" }
           # The branch may have moved on while this run was going.
           git pull --rebase origin $env:GITHUB_REF_NAME
           git push origin HEAD:$env:GITHUB_REF_NAME
+          if ($LASTEXITCODE -ne 0) { throw "could not push the screenshots" }
       - name: Collect logs
         if: always()
         shell: pwsh
