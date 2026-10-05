@@ -15,6 +15,52 @@ Legenda: 🔑 = butuh Administrator, 🖥️ = butuh dua PC (agent + dashboard).
   `dropped` setelah timeout; sambung lagi → `online` kembali (auto-reconnect).
 - [ ] Token salah → agent ditolak (`reject`), tidak muncul di dashboard.
 
+## Pemasangan (pairing) agent
+
+Sudah terbukti otomatis: `tests/unit/test_pairing.py` (kode salah, lockout 5×
+per alamat, token per-agent tersimpan sebagai hash, pendaftaran ditutup,
+rotasi kode, redaksi log), `tests/integration/test_pairing_flow.py` dan
+`test_agent_app_e2e.py` (agent utuh: pairing lewat WebSocket sungguhan →
+restart memakai token tersimpan → pairing ulang setelah database dashboard
+di-reset; agent mengabaikan proxy sistem).
+
+**Uji manual yang sudah dijalankan (2026-10-05, container Linux, bukan
+Windows):** dashboard `--keep-running` + agent sebagai dua proses terpisah,
+penemuan lewat UDP broadcast (tanpa `--dashboard`):
+
+| Langkah | Hasil |
+|---|---|
+| Agent tanpa token & tanpa kode | Pesan "PC ini belum dipasangkan", exit 2 ✅ |
+| `--pair` kode salah | Ditolak sekali, pesan "kode pemasangan salah", exit 3, tidak mengunci PC ✅ |
+| `--pair` kode benar | "PC ini berhasil dipasangkan", token tersimpan (izin 600), PC muncul **Aktif** di Layar PC ✅ |
+| Restart tanpa kode | Masuk dengan token tersimpan, tidak ada pairing ulang ✅ |
+| Catatan aktivitas | "Kode pemasangan salah", "PC dipasangkan" tercatat ✅ |
+| Layar & ikon tray | Tidak dapat diuji (container tanpa layar; tray "indikator disembunyikan" — benar) |
+
+Ditemukan & diperbaiki saat uji manual: agent sebelumnya mengikuti **proxy
+sistem** sehingga koneksi LAN ke dashboard ditolak (HTTP 403) — di sekolah
+yang memasang proxy di Windows, agent tidak akan pernah terhubung.
+
+Masih perlu di Windows nyata:
+
+- [ ] 🖥️ Pasang agent di PC lab dengan `labsentinel-agent --pair KODE` → PC
+  muncul di "Layar PC" dalam beberapa detik; hitungan "PC sudah terpasang" di
+  halaman Aturan bertambah.
+- [ ] 🖥️ PC lab yang memakai **proxy di Internet Options** tetap terhubung ke
+  dashboard di LAN.
+- [ ] 🔑 File token di `C:\ProgramData\LabSentinel\agent\token` **tidak bisa
+  dibaca** akun peserta (non-admin): `type` dari akun peserta → "Access is
+  denied". (ACL dipasang installer; `chmod` 600 hanya berlaku di POSIX.)
+- [ ] Tutup pendaftaran di dashboard → PC baru ditolak dengan pesan
+  "pendaftaran PC baru sedang ditutup"; PC lama tetap terhubung.
+- [ ] Salah kode 5× dari PC yang sama (jalankan `--pair` lima kali dengan
+  kode salah) → percobaan ke-6 dengan kode benar ditolak "tunggu … detik";
+  PC lain tetap bisa dipasang.
+- [ ] **Clone disk image:** PC yang di-clone *setelah* agent dipasangkan
+  berbagi ID & token → keduanya saling memutus. Prosedur yang benar: clone
+  sebelum pairing, atau hapus `agent_id` + `token` lalu `--pair` di tiap PC
+  hasil clone (lihat panduan deploy).
+
 ## M2 — Enforcement whitelist (sebagian 🔑)
 
 - [ ] Buka game/aplikasi di luar whitelist → muncul peringatan, lalu aplikasi
