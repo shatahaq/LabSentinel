@@ -149,8 +149,9 @@ class SetupWindow:
         ttk.Label(self.form, text="Lihat di dashboard: halaman Aturan → Pemasangan PC baru.",
                   style="Hint.TLabel").pack(anchor="w")
 
+        # Alt+A opens it from the keyboard too (the "A" is underlined).
         self.more = ttk.Label(self.form, text="▸ Alamat dashboard (opsional)",
-                              style="Link.TLabel", cursor="hand2")
+                              style="Link.TLabel", cursor="hand2", underline=2)
         self.more.pack(anchor="w", pady=(14, 0))
         self.more.bind("<Button-1>", lambda _e: self._toggle_address())
         self.address_box = ttk.Frame(self.form)
@@ -177,6 +178,8 @@ class SetupWindow:
 
         self.root.bind("<Return>", lambda _e: self._on_primary())
         self.root.bind("<Escape>", lambda _e: self._on_secondary())
+        self.root.bind("<Alt-a>", lambda _e: self._open_address())
+        self.root.bind("<Alt-A>", lambda _e: self._open_address())
         self.root.protocol("WM_DELETE_WINDOW", self._on_secondary)
 
     # ----------------------------------------------------------- states
@@ -232,6 +235,13 @@ class SetupWindow:
         if self.state in ("idle", "error"):
             digits = sum(ch.isdigit() for ch in self.code_var.get())
             self.primary.configure(state="normal" if digits == 6 else "disabled")
+
+    def _open_address(self) -> None:
+        if self.state not in ("idle", "error"):
+            return
+        if not self.address_box.winfo_ismapped():
+            self._toggle_address()
+        self.address.focus_set()
 
     def _toggle_address(self) -> None:
         if self.address_box.winfo_ismapped():

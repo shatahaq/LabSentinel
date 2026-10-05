@@ -241,3 +241,28 @@ async def test_window_pairs_from_typed_code(
         assert "Berhasil" in win.status_title.cget("text")
     finally:
         root.destroy()
+
+
+@pytest.mark.skipif(not _display_available(), reason="needs tkinter and a display")
+def test_alt_a_opens_the_address_field(tmp_path: Path) -> None:
+    import tkinter as tk
+
+    from labsentinel_agent.gui.setup_window import SetupWindow
+
+    root = tk.Tk()
+    try:
+        win = SetupWindow(root, SetupFlow(_config(tmp_path, "ws://127.0.0.1:1"),
+                                          service=FakeService()))
+        root.update()
+        assert not win.address_box.winfo_ismapped()
+        win.code.focus_force()
+        root.update()
+        win.code.event_generate("<Alt-KeyPress-a>", when="now")
+        root.update()
+        assert win.address_box.winfo_ismapped()
+        assert root.focus_get() is win.address
+        win.code.event_generate("<Alt-KeyPress-a>", when="now")  # stays open
+        root.update()
+        assert win.address_box.winfo_ismapped()
+    finally:
+        root.destroy()
