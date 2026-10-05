@@ -179,6 +179,14 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
 
 ## M6 — Mode, laporan, anti-tamper
 
+- [ ] 🖥️ Mode di PC peserta (uji coba dimatikan, akun peserta **standar**):
+  **Praktikum** — `code.exe` di daftar boleh jalan, `notepad.exe` ditutup,
+  situs tambahan (mis. `tiktok.com`) terblokir di Chrome dan Edge.
+  **Ujian** — `code.exe` ikut ditutup; semua kategori situs terblokir.
+  **Bebas** — tidak ada yang ditutup/diblokir, tetapi `notepad.exe` tercatat
+  "hanya dicatat" dan layar tetap terlihat. Logika ini teruji otomatis;
+  pemblokiran nyata di browser belum diuji di Windows.
+
 Sudah terbukti otomatis:
 
 - **Laporan** (`tests/unit/test_reports.py`): isi PDF dibaca balik dengan

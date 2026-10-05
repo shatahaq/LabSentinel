@@ -34,11 +34,25 @@ kanan atas mengganti tema terang/gelap.
 ## Alur satu sesi
 
 1. **Sebelum sesi** — di **Aturan**, pilih mode:
-   - **Ujian**: hanya Chrome dan Edge; semua kategori situs diblokir.
+   - **Ujian**: hanya Chrome dan Edge (aplikasi untuk Praktikum tidak
+     berlaku); semua kategori situs dan situs tambahan diblokir.
    - **Praktikum**: browser + aplikasi yang Anda izinkan (mis. `code.exe`);
-     game, media sosial, dan AI chatbot diblokir.
-   - **Bebas**: tanpa pembatasan (tetap tercatat bila ada).
-   Sesuaikan **Aplikasi yang diizinkan** dan **Situs yang diblokir** bila perlu.
+     kategori situs yang Anda centang dan situs tambahan diblokir.
+   - **Bebas**: hanya memantau. Tidak ada aplikasi yang ditutup dan tidak ada
+     situs yang diblokir, tetapi layar tetap terlihat dan aplikasi di luar
+     daftar tetap dicatat ("hanya dicatat" di Laporan).
+
+   Di halaman yang sama Anda bisa menambah atau menghapus:
+   - **Aplikasi yang diizinkan**: ketik nama berkasnya (mis. `code.exe`,
+     lihat di Task Manager → Details) lalu **Tambah**.
+   - **Situs yang diblokir**: centang kategori siap pakai, dan/atau isi
+     **Situs tambahan** dengan alamatnya (mis. `tiktok.com`). Alamat yang
+     ditempel dari browser juga boleh; yang diblokir seluruh situsnya,
+     termasuk subdomain.
+
+   Daftar ini disimpan per pilihan, jadi berpindah mode tidak menghapusnya:
+   kembali ke Praktikum, aplikasi dan kategori yang Anda pilih masih ada.
+   Perubahan langsung dikirim ke semua PC yang terhubung.
 2. **Mulai sesi** — di **Beranda**, klik **Mulai sesi**, beri nama (mis. "UTS
    Pemrograman Dasar - Kelas B"), pilih mode. (Sesi terjadwal yang mulai dan
    berakhir sendiri sudah didukung di sistem, tetapi belum bisa dibuat dari
