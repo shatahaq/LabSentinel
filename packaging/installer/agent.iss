@@ -101,7 +101,8 @@ begin
     'Pasangkan ke dashboard',
     'Masukkan kode 6 digit dari dashboard pengawas.',
     'Kode tampil di dashboard: halaman Aturan, kartu "Pemasangan PC baru". ' +
-    'Alamat dashboard boleh dikosongkan; agent menemukannya sendiri lewat jaringan lab.');
+    'Alamat dashboard boleh dikosongkan; agent menemukannya sendiri lewat jaringan lab. ' +
+    'Kosongkan kode untuk memasangkan nanti (misalnya saat menyiapkan disk image).');
   PairPage.Add('Kode pemasangan (6 digit):', False);
   PairPage.Add('Alamat dashboard (opsional, contoh ws://192.168.1.10:8765):', False);
   PairPage.Values[0] := ExpandConstant('{param:PAIRCODE|}');
@@ -118,9 +119,10 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if CurPageID = PairPage.ID then
-    if Length(DigitsOnly(PairPage.Values[0])) <> 6 then
+    if (Trim(PairPage.Values[0]) <> '') and (Length(DigitsOnly(PairPage.Values[0])) <> 6) then
     begin
-      MsgBox('Kode pemasangan harus 6 digit angka.', mbError, MB_OK);
+      MsgBox('Kode pemasangan harus 6 digit angka, atau kosongkan untuk memasangkan nanti.',
+        mbError, MB_OK);
       Result := False;
     end;
 end;
@@ -136,13 +138,23 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Existing: String;
 begin
   // Upgrade: stop the running service so its files can be replaced. A stop
-  // during an upgrade is deliberate, so do not leave it reported as tamper.
-  RunHidden(ExpandConstant('{sys}\sc.exe'), 'stop {#ServiceName}');
-  Sleep(3000);
+  // during an upgrade is deliberate, so it must not be reported as tamper:
+  // prepare-upgrade waits until the service has fully stopped (it records the
+  // stop on its way out) and only then removes that record.
+  Existing := ExpandConstant('{app}\labsentinel-service.exe');
+  if FileExists(Existing) then
+    RunHidden(Existing, 'prepare-upgrade')
+  else
+  begin
+    RunHidden(ExpandConstant('{sys}\sc.exe'), 'stop {#ServiceName}');
+    Sleep(5000);
+    DeleteFile(ExpandConstant('{#DataDir}\running.json'));
+  end;
   RunHidden(ExpandConstant('{sys}\taskkill.exe'), '/F /IM labsentinel-tray.exe');
-  DeleteFile(ExpandConstant('{#DataDir}\running.json'));
   Result := '';
 end;
 
@@ -180,12 +192,22 @@ begin
     '  sc start {#ServiceName}', mbError, MB_OK, IDOK);
 end;
 
+function PairLater(): Boolean;
+begin
+  Result := (not AlreadyPaired()) and (Trim(PairPage.Values[0]) = '');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep <> ssPostInstall then
     Exit;
   WriteConfig(Trim(PairPage.Values[1]));
-  if not AlreadyPaired() then
+  if PairLater() then
+    // Disk image preparation: no pairing and no first start here, so no
+    // agent identity is created inside the image. Each clone creates its own
+    // when the service first starts, then is paired with --pair-only.
+    Log('No pairing code given: pairing deferred, service not started now.')
+  else if not AlreadyPaired() then
     PairThisPC();
   RunHidden(ExpandConstant('{app}\labsentinel-service.exe'), 'install');
   RunHidden(ExpandConstant('{sys}\netsh.exe'),
@@ -194,5 +216,6 @@ begin
     'advfirewall firewall add rule name="Lab Sentinel Agent (penemuan dashboard)" ' +
     'dir=in action=allow protocol=UDP localport=50123 ' +
     'program="' + ExpandConstant('{app}\labsentinel-service.exe') + '"');
-  RunHidden(ExpandConstant('{sys}\sc.exe'), 'start {#ServiceName}');
+  if not PairLater() then
+    RunHidden(ExpandConstant('{sys}\sc.exe'), 'start {#ServiceName}');
 end;

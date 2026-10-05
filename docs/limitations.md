@@ -89,6 +89,10 @@ Administrator) lewat [manual-test-checklist.md](manual-test-checklist.md):
 
 ## E. Operasional
 
+- **Penjadwalan sesi belum ada di UI.** Dashboard menjalankan sesi terjadwal
+  (mulai/akhir otomatis, tercatat bila terlewat) dan menampilkan daftar
+  "Terjadwal", tetapi belum ada formulir untuk membuatnya.
+
 - Installer belum ditandatangani (code signing) → Windows SmartScreen akan
   memperingatkan. Teks tombol wizard Inno Setup berbahasa Inggris (pesan Lab
   Sentinel berbahasa Indonesia); tambahkan `Indonesian.isl` bila perlu.

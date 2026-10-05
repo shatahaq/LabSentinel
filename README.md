@@ -15,22 +15,37 @@ Transparan, berbasis *whitelist*, dan hanya untuk perangkat milik institusi.
 
 | Komponen | Lokasi | Peran |
 |----------|--------|-------|
-| **Agent** | tiap PC peserta | Dua proses dalam satu instalasi: **service** latar belakang (penegakan whitelist, kebijakan situs, kirim layar & pelanggaran) + **helper sesi pengguna** (ikon tray & popup peringatan). Lihat [ADR-0004](docs/adr/0004-agent-two-process-split.md). |
-| **Dashboard** | PC pengawas | Server WebSocket untuk agent + database SQLite + UI admin (Eel). |
+| **Agent** | tiap PC peserta | Tiga proses dalam satu instalasi: **layanan Windows** (aturan, kebijakan situs, koneksi dashboard, anti-tamper), **desktop worker** (dijalankan layanan sebagai SYSTEM di sesi pengguna: layar, jendela, judul) dan **helper tray** (ikon & popup untuk peserta). Lihat [ADR-0004](docs/adr/0004-agent-two-process-split.md) dan [ADR-0006](docs/adr/0006-desktop-access-from-the-service.md). |
+| **Dashboard** | PC pengawas | Server WebSocket untuk agent + SQLite + UI admin (Eel) + laporan PDF/Excel. |
 
 Agent adalah **client**; dashboard menjalankan **server WebSocket khusus** untuk
 40+ agent, sementara Eel hanya melayani UI admin di `localhost`
 ([ADR-0001](docs/adr/0001-transport-split.md)). Agent menemukan dashboard
-otomatis lewat **UDP broadcast** — tidak perlu mengatur IP satu per satu.
+otomatis lewat **UDP broadcast** dan dipasangkan sekali dengan **kode 6 digit**
+yang tampil di dashboard.
 
-## Struktur repо
+## Dokumentasi
+
+| Untuk | Dokumen |
+|---|---|
+| Pengawas / laboran (pemakaian sehari-hari) | [docs/admin-guide.md](docs/admin-guide.md) |
+| Memasang di lab | [docs/deploy-guide.md](docs/deploy-guide.md) |
+| Desain sistem | [docs/architecture.md](docs/architecture.md), [docs/adr/](docs/adr/) |
+| Yang tidak dilakukan / belum terverifikasi | [docs/limitations.md](docs/limitations.md) |
+| Uji yang butuh Windows nyata + admin | [docs/manual-test-checklist.md](docs/manual-test-checklist.md) |
+| Performa agent | [docs/performance.md](docs/performance.md) |
+
+## Struktur repo
 
 ```
-shared/     labsentinel_shared/   protokol pesan versi-ed, rules, security, discovery, config, logging
-agent/      labsentinel_agent/    client transport, rule cache (+ enforcement, tray — milestone berikut)
-dashboard/  labsentinel_dashboard/ server transport (+ storage, UI — milestone berikut)
-docs/       arsitektur, ADR, checklist uji manual
-scripts/    export_schema.py, m1_smoke.py
+shared/     labsentinel_shared/    protokol versi-ed, rules, security, discovery, config, logging
+agent/      labsentinel_agent/     layanan, transport, enforcement, kebijakan browser, desktop worker,
+                                   tray, lifecycle (anti-tamper)
+dashboard/  labsentinel_dashboard/ server transport, domain (pairing, sesi, aturan), storage, laporan
+            web/                   UI admin (HTML/CSS/JS, tanpa framework)
+packaging/  spesifikasi PyInstaller, skrip installer Inno Setup, build.py
+docs/       arsitektur, ADR, panduan admin & deploy, batasan, checklist uji manual
+scripts/    demo_lab.py, export_schema.py, m1_smoke.py, tray_demo.py, measure_agent.py
 tests/      unit/ + integration/
 ```
 
@@ -45,39 +60,46 @@ python -m ruff check .      # lint
 
 ## Mencoba dashboard
 
-Menjalankan dashboard sungguhan dengan PC simulasi — cara tercepat melihat
-tampilan dan alur kerjanya tanpa lab:
+Menjalankan dashboard sungguhan dengan PC simulasi (yang benar-benar melakukan
+pairing) — cara tercepat melihat tampilan dan alur kerjanya tanpa lab:
 
 ```powershell
 python scripts/demo_lab.py --pcs 14
 ```
 
-Menjalankan dashboard sebenarnya:
+Menjalankan dashboard dan satu agent dari kode sumber:
 
 ```powershell
-python -m labsentinel_dashboard --keep-running
+labsentinel-dashboard --keep-running          # mencetak kode pemasangan 6 digit
+labsentinel-agent --pair 123456               # sekali; berikutnya cukup: labsentinel-agent
 ```
 
-Demo lain: `scripts/m1_smoke.py` (transport), `scripts/tray_demo.py` (ikon tray),
-`scripts/measure_agent.py` (footprint agent).
+Membangun installer (Windows, butuh Inno Setup 6):
+
+```powershell
+python packaging/build.py --installer
+```
 
 ## Status milestone
 
 | Milestone | Isi | Status |
 |-----------|-----|--------|
-| **M1** | Protokol + transport dasar: UDP discovery, WebSocket, heartbeat, pairing, auth token, anti-replay, auto-reconnect, rule cache | ✅ Selesai & teruji |
-| **M2** | Penegakan whitelist aman + peringatan + screenshot bukti + dry-run | ✅ Selesai & teruji |
-| **M3** | Kontrol jeda/lanjut (per-PC & massal, ber-ACK) + audit log + sesi + ikon tray peserta | ✅ Selesai & teruji |
-| **M4** | Pemblokiran situs via kebijakan browser (registry) + pencatatan judul jendela | ✅ Selesai & teruji |
-| **M5** | Streaming layar adaptif + UI dashboard (grid, aturan, laporan, audit) | ✅ Selesai & teruji |
-| M6 | Mode/profil, laporan PDF/Excel, anti-tamper (service, watchdog) | ⏳ |
-| M7 | Polish UI/UX, optimasi performa, packaging + dokumentasi | ⏳ |
+| **M1** | Protokol + transport dasar: UDP discovery, WebSocket, heartbeat, pairing, auth token, anti-replay, auto-reconnect, rule cache | ✅ |
+| **M2** | Penegakan whitelist aman + peringatan + screenshot bukti + dry-run | ✅ |
+| **M3** | Kontrol jeda/lanjut (per-PC & massal, ber-ACK) + audit log + sesi + ikon tray peserta | ✅ |
+| **M4** | Pemblokiran situs via kebijakan browser (registry) + pencatatan judul jendela | ✅ |
+| **M5** | Streaming layar adaptif + UI dashboard (grid, aturan, laporan, audit) | ✅ |
+| **M6** | Pairing 6 digit (+UI), laporan PDF/Excel per sesi, anti-tamper (Windows Service, watchdog, deteksi agent dihentikan, autostart tray), desktop worker | ✅ teruji otomatis · ⚠️ bagian Windows belum diverifikasi |
+| **M7** | Packaging PyInstaller + installer, panduan admin & deploy, arsitektur final, daftar batasan | ✅ build Linux teruji · ⚠️ installer belum dikompilasi |
 
-Status terakhir: **180 test lulus**, `ruff` dan `mypy --strict` bersih.
+Status terakhir: **411 test lulus** (7 dilewati: butuh Windows/layar), `ruff` dan
+`mypy --strict` bersih (`mypy --platform win32`).
 
-Lihat [docs/architecture.md](docs/architecture.md) untuk desain lengkap dan
-[docs/manual-test-checklist.md](docs/manual-test-checklist.md) untuk uji yang
-butuh Windows nyata + hak admin.
+**Penting:** putaran M6–M7 dikembangkan di Linux. Layanan Windows, desktop
+worker di sesi pengguna, registry HKLM, Chrome/Edge asli, dan installer **belum
+dijalankan di Windows**; daftar lengkap ada di
+[docs/limitations.md](docs/limitations.md) §A dan
+[docs/manual-test-checklist.md](docs/manual-test-checklist.md).
 
 ## Lingkungan pengembangan
 
@@ -86,12 +108,16 @@ butuh Windows nyata + hak admin.
   `pystray`) dipasang lewat extra `agent` dengan marker platform.
 
 ```powershell
-python -m pip install -e ".[dashboard,agent,dev]"   # pada PC Windows nyata
+python -m pip install -e ".[dashboard,agent,dev,packaging]"   # pada PC Windows nyata
 ```
 
-## Batasan yang diketahui
+## Batasan yang diketahui (ringkas)
 
-- Hanya Windows; hanya browser Chromium (Chrome/Edge) untuk pemblokiran situs.
-- Pencatatan situs dari **judul jendela** kurang presisi dibanding extension —
-  whitelist aplikasi adalah pagar utama. Lihat [ADR-0003](docs/adr/0003-site-blocking-via-policy.md).
-- Hanya untuk satu LAN; kualitas streaming bergantung kapasitas jaringan.
+- Hanya Windows 10/11; pemblokiran situs hanya Chrome/Edge; hanya monitor utama
+  dan sesi konsol.
+- Lalu lintas agent↔dashboard **tidak dienkripsi** (tanpa TLS) — gunakan VLAN lab.
+- Deteksi situs dari judul jendela kurang presisi; whitelist aplikasi adalah
+  pagar utama ([ADR-0003](docs/adr/0003-site-blocking-via-policy.md)).
+- Akun peserta wajib non-administrator.
+
+Selengkapnya: [docs/limitations.md](docs/limitations.md).

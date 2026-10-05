@@ -287,6 +287,19 @@ def remove() -> None:  # pragma: no cover - Windows only
     print(f"{DISPLAY_NAME} dihapus. Kebijakan browser sudah dipulihkan.")
 
 
+def prepare_upgrade() -> None:  # pragma: no cover - Windows only
+    """Stop the service and wait, then forget that stop (an upgrade is not tamper)."""
+    from labsentinel_shared.config import load_agent_config
+
+    with contextlib.suppress(Exception):
+        win32serviceutil.StopService(SERVICE_NAME)
+    with contextlib.suppress(Exception):
+        win32serviceutil.WaitForServiceStatus(SERVICE_NAME, win32service.SERVICE_STOPPED, 40)
+    config = load_agent_config(_config_path())
+    with contextlib.suppress(OSError):
+        (config.data_dir / "running.json").unlink()
+
+
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - Windows only
     args = sys.argv[1:] if argv is None else argv
     if sys.platform != "win32":
@@ -303,6 +316,8 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - Windows on
         install()
     elif command == "remove":
         remove()
+    elif command == "prepare-upgrade":
+        prepare_upgrade()
     elif command in {"start", "stop", "restart", "debug"}:
         win32serviceutil.HandleCommandLine(LabSentinelService, argv=[sys.argv[0], *args])
     else:

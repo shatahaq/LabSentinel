@@ -224,8 +224,69 @@ Yang **belum bisa** diverifikasi tanpa Windows + Administrator:
 - [ ] 🔑 `labsentinel-service remove` → layanan hilang, entri Run hilang,
   kebijakan browser bersih.
 
+### Desktop worker (ADR-0006) — paling penting di Windows
+
+Saat agent berjalan sebagai layanan, **seluruh** penegakan, tangkapan layar,
+dan judul jendela bergantung pada desktop worker. Logika dan protokolnya diuji
+otomatis (`tests/integration/test_desktop_worker.py`), tetapi pemanggilan
+Windows-nya belum pernah dijalankan:
+
+- [ ] 🔑 Setelah login peserta, Task Manager (*Details*, sebagai admin)
+  menampilkan `labsentinel-agent.exe` dengan *User name* **SYSTEM** dan
+  *Session ID* = sesi peserta (bukan 0). Tidak ada jendela/konsol yang muncul.
+- [ ] Kartu PC di dashboard menampilkan **thumbnail layar asli** (bukan hitam)
+  dan **tidak** bertanda "layar tidak terjangkau".
+- [ ] Dalam mode ditegakkan: buka `notepad.exe` (tidak diizinkan) → peringatan
+  muncul lalu Notepad tertutup **dengan sopan** (WM_CLOSE: Notepad menanyakan
+  simpan bila ada isi).
+- [ ] Buka Steam / launcher game yang jendelanya muncul terlambat → tetap
+  ditutup begitu jendelanya tampil.
+- [ ] Buka situs terlarang yang lolos kebijakan (judul memuat kata kunci) →
+  pelanggaran "Dugaan situs terlarang" dengan tangkapan layar yang benar.
+- [ ] Tombol **Kunci layar** di dashboard benar-benar mengunci PC peserta.
+- [ ] Peserta (non-admin) mencoba *End task* worker SYSTEM → "Access is denied".
+- [ ] 🔑 Admin mengakhiri worker → dalam ≤ 15 detik muncul worker baru; kartu
+  sempat menampilkan "layar tidak terjangkau" lalu pulih.
+- [ ] Logout lalu login sebagai pengguna lain (atau *Switch user*) → worker
+  pindah ke sesi baru; thumbnail menampilkan desktop pengguna baru.
+- [ ] Layar dikunci (Win+L) → tidak ada crash; thumbnail hitam/terakhir; setelah
+  dibuka, kembali normal.
+
+### Helper tray dinyalakan ulang
+
+- [ ] Peserta menutup ikon tray dari Task Manager → dashboard menandai
+  "indikator disembunyikan" → dalam ±30 detik ikon muncul lagi (sebagai akun
+  peserta) dan tanda hilang.
+- [ ] Setelah login, hanya **satu** ikon Lab Sentinel (Run key dan layanan tidak
+  menghasilkan ikon ganda).
+
 ## M7 — Packaging & performa
 
-- [ ] Installer memasang agent sebagai Windows Service dan berjalan saat boot.
+Sudah terbukti di Linux: kedua build PyInstaller berhasil; dashboard beku
+melayani UI dan mengekspor PDF/Excel; agent beku pairing (`--pair-only`) lalu
+terhubung; tray beku berjalan. Installer Inno Setup **belum pernah
+dikompilasi**.
+
+- [ ] `python packaging/build.py --installer` di Windows menghasilkan dua
+  installer tanpa error (Inno Setup 6).
+- [ ] 🔑 Installer dashboard: pintasan menu Start membuka dashboard dengan
+  `--keep-running`; aturan firewall "Lab Sentinel Dashboard (agent)" dan
+  "(penemuan)" ada di `wf.msc`; jendela terbuka di Edge bila Chrome tidak ada.
+- [ ] 🔑 Installer agent interaktif: kode salah → pesan "Dashboard menolak kode
+  ini"; kode benar → PC muncul di dashboard; ikon tray langsung tampil.
+- [ ] 🔑 Installer agent senyap: `/VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=…`
+  di 2–3 PC sekaligus → semua muncul; log `%TEMP%\Setup Log*.txt` memuat
+  `--pair ... -> 0`.
+- [ ] 🔑 Kode dikosongkan (persiapan disk image) → layanan terpasang tetapi
+  tidak berjalan, `agent_id` **tidak** ada; clone; di hasil clone setelah boot
+  `agent_id` dibuat; `--pair-only` + `sc start` → muncul di dashboard dengan ID
+  berbeda per PC.
+- [ ] 🔑 Upgrade (jalankan installer versi sama/baru di atas yang lama) →
+  pairing dipertahankan, **tidak** ada catatan "dihentikan secara manual".
+- [ ] 🔑 Uninstall agent → layanan, aturan firewall, entri Run, dan berkas
+  `token` hilang; `chrome://policy` bersih.
+- [ ] Agent berjalan dari folder `C:\Program Files\LabSentinel\Agent` tanpa
+  Python terpasang di PC.
 - [ ] **Performa agent:** CPU rata-rata < 2% dan RAM < 100 MB saat idle
-  (ukur dengan Performance Monitor / `Get-Counter`). Catat angkanya.
+  (ukur dengan Performance Monitor / `Get-Counter`) — **jumlahkan layanan +
+  desktop worker + helper tray**. Catat angkanya.
