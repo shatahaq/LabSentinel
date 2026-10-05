@@ -170,11 +170,13 @@ def test_pdf_survives_hostile_text(db: Database) -> None:
     _violation(db, sid, "pc", "PC", "site_title", "<script>alert(1)</script> &amp;", T0 + 1,
                detail="</para><font size=40>")
     data = render_pdf(build_session_report(db, sid, now=T0 + 60))
-    text = _pdf_text(data).replace("\n", "")  # long cells wrap across lines
+    # Long cells wrap, and where a wrap lands depends on the font found on the
+    # machine (Arial on Windows, DejaVu here); compare without whitespace.
+    text = "".join(_pdf_text(data).split())
     # Markup in names and titles is printed literally, never interpreted.
-    assert "<script>alert(1)</script> &amp;" in text
-    assert "</para><font size=40>" in text
-    assert "<b>x</b> & y" in text
+    assert "<script>alert(1)</script>&amp;" in text
+    assert "</para><fontsize=40>" in text
+    assert "<b>x</b>&y" in text
 
 
 # -------------------------------------------------------------- Excel

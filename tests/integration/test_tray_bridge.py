@@ -92,7 +92,9 @@ async def test_warning_and_broadcast_displayed(tmp_path: Path) -> None:
     helper = _helper(tmp_path, ind)
     task = asyncio.ensure_future(helper.run())
     try:
-        await _wait(lambda: bool(ind.statuses))
+        # The helper shows "disconnected" before it connects; wait for the
+        # service's own status, i.e. a live connection, before sending.
+        await _wait(lambda: bridge.indicator_visible)
         # WarningPresenter port, as called by the enforcement engine.
         bridge.warn_closing("game.exe", 5, "tidak ada dalam whitelist")
         await _wait(lambda: bool(ind.warnings))

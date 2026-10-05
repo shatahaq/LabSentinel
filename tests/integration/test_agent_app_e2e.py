@@ -171,6 +171,12 @@ async def test_repair_after_dashboard_reset(
 
     async with _agent(config, pairing.code):
         await events.until(lambda: len(events.connected) == 1)
+        # The dashboard counts the PC as connected as soon as it has sent the
+        # welcome; the agent stores the new token when it reads it.
+        for _ in range(100):
+            if read_token(config) not in (None, "token-from-before-the-reset"):
+                break
+            await asyncio.sleep(0.05)
     assert read_token(config) not in (None, "token-from-before-the-reset")
 
 
