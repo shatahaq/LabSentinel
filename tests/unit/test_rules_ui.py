@@ -60,6 +60,7 @@ def test_rule_methods_are_exposed_to_the_ui() -> None:
     ("  https://www.TikTok.com/@someone/video/1?lang=id ", "tiktok.com"),
     ("chat.openai.com", "chat.openai.com"),
     ("*.example.org", "example.org"),
+    ("example.com.", "example.com"),  # a pasted FQDN may end with a dot
     ("192.168.1.5", "192.168.1.5"),
     ("tiktok", None),
     ("situs judi.com", None),

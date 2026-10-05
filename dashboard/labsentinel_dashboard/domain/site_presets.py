@@ -197,6 +197,7 @@ def custom_site(text: str) -> SiteRule | None:
     host = text.strip().lower()
     host = re.sub(r"^[a-z]+://", "", host)
     host = re.split(r"[/?#:]", host, maxsplit=1)[0]
+    host = host.rstrip(".")  # a pasted FQDN may end with a dot (example.com.)
     for prefix in ("*.", "www."):
         host = host.removeprefix(prefix)
     if _IPV4.match(host):
