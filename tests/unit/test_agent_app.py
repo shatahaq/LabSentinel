@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import stat
+import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -126,6 +128,15 @@ def test_read_token_tolerates_a_trailing_newline(tmp_path: Path) -> None:
     config.token_file.parent.mkdir(parents=True)
     config.token_file.write_text("per-agent-token-value\r\n", encoding="utf-8")
     assert read_token(config) == "per-agent-token-value"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_stored_token_is_private_to_its_owner(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    store_token(config, "per-agent-token-value")
+    assert stat.S_IMODE(config.token_file.stat().st_mode) == 0o600
+    # No temp files left behind next to it.
+    assert [p.name for p in config.token_file.parent.iterdir()] == ["token"]
 
 
 def test_store_token_replaces_previous(tmp_path: Path) -> None:

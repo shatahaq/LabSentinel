@@ -95,8 +95,26 @@ def read_token(config: AgentConfig) -> str | None:
 
 
 def store_token(config: AgentConfig, token: str) -> None:
-    config.token_file.parent.mkdir(parents=True, exist_ok=True)
-    config.token_file.write_text(token, encoding="utf-8")
+    """Persist this PC's credential atomically and readable by its owner only.
+
+    mkstemp creates the file 0600 on POSIX. On Windows the folder ACL decides
+    who can read it; the installer restricts the agent's data folder to
+    SYSTEM and Administrators (see docs/admin-guide.md).
+    """
+    import os
+    import tempfile
+
+    path = config.token_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".token-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(token)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 # ---------------------------------------------------------------- the agent
