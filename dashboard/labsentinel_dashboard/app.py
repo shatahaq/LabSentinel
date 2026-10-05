@@ -44,17 +44,36 @@ from labsentinel_shared.rules import RuleSet
 
 log = logging.getLogger("labsentinel.dashboard.app")
 
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+def _web_dir() -> Path:
+    """The admin UI assets: bundled next to the code, or inside a frozen build."""
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle:
+        return Path(bundle) / "web"
+    return Path(__file__).resolve().parent.parent / "web"
+
+
+def default_config_path() -> Path | None:
+    """dashboard.toml next to an installed executable, if there is one."""
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).with_name("dashboard.toml")
+        if candidate.exists():
+            return candidate
+    return None
+
+
+WEB_DIR = _web_dir()
 
 # Bridge methods exposed to the UI. Listed explicitly so nothing is published
 # to the browser by accident.
 EXPOSED = (
-    "poll_events", "get_overview", "get_agents", "get_frame", "set_viewing",
-    "pause", "resume", "lock_screens", "broadcast",
+    "poll_events", "get_overview", "get_agents", "get_frame", "get_frames", "set_viewing",
+    "pause", "resume", "lock_screens", "freeze_input", "broadcast",
     "get_rules", "set_mode", "set_dry_run", "set_whitelist",
     "set_site_categories", "set_custom_sites", "set_close_grace",
     "start_session", "end_session", "schedule_session", "cancel_session", "list_sessions",
     "get_violations", "get_screenshot", "get_audit",
+    "get_pairing", "rotate_pairing_code", "set_pairing_open",
+    "export_report",
 )
 
 
@@ -68,6 +87,25 @@ def _named_proxy(bridge: UiBridge, name: str) -> Callable[..., Any]:
 
     proxy.__name__ = name
     return proxy
+
+
+def pick_browser_mode() -> str:
+    """Which window to open the admin UI in.
+
+    Chrome's app window if Chrome is installed; otherwise Edge, which every
+    Windows 10/11 PC has; otherwise the default browser. Eel raises and the
+    dashboard would stop if asked for a browser that is not there.
+    """
+    try:
+        import eel.chrome
+
+        if eel.chrome.find_path():
+            return "chrome"
+    except Exception:
+        log.debug("could not look for Chrome", exc_info=True)
+    if sys.platform == "win32":
+        return "edge"
+    return "default"
 
 
 def local_ip() -> str:
@@ -97,7 +135,7 @@ class DashboardApp:
         self.service = DashboardService(
             db=self.db,
             bus=self.bus,
-            rules_provider=self.rules.current,
+            rules_provider=self.rules.for_agents,
             screenshot_dir=config.screenshot_dir,
             heartbeat_timeout_s=config.heartbeat_timeout_s,
         )
@@ -189,7 +227,8 @@ class DashboardApp:
 
         bridge = UiBridge(
             service=self.service, sessions=self.sessions, rules=self.rules,
-            db=self.db, bus=self.bus, loop=self.loop,
+            db=self.db, bus=self.bus, loop=self.loop, pairing=self.pairing,
+            reports_dir=self.config.data_dir / "reports",
         )
         eel.init(str(WEB_DIR))
         for name in EXPOSED:
@@ -204,7 +243,7 @@ class DashboardApp:
                 host=self.config.eel_host,
                 port=self.config.eel_port,
                 size=(1440, 900),
-                mode="chrome" if open_browser else None,
+                mode=pick_browser_mode() if open_browser else None,
                 # A very long delay effectively disables the auto-exit.
                 shutdown_delay=86400.0 if keep_running else 2.0,
             )
@@ -228,7 +267,8 @@ class DashboardApp:
         print(f"  Kode pemasangan agent   : {self.pairing.code}   (6 digit)")
         print(f"  Basis data              : {self.config.db_path}")
         print("=" * 66)
-        print("  Simpan token di atas; dibutuhkan saat memasang agent di PC lab.")
+        print("  Ketik kode di atas sekali saat memasang agent di PC lab.")
+        print("  Kode dan pendaftaran PC baru bisa diatur di halaman Aturan.")
         print()
 
     def shutdown(self) -> None:
@@ -264,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    config = load_dashboard_config(args.config)
+    config = load_dashboard_config(args.config or default_config_path())
     setup_logging(log_path=config.log_path, level=config.log_level)
 
     app = DashboardApp(config)

@@ -14,12 +14,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import socket
 from dataclasses import dataclass
 
 SERVICE_ID = "labsentinel"
 DISCOVERY_VERSION = 1
 DEFAULT_DISCOVERY_PORT = 50123
+PROBE_INTERVAL_S = 1.5  # an agent re-asks this often while it looks
+
+log = logging.getLogger("labsentinel.discovery")
 
 _PROBE = {"service": SERVICE_ID, "kind": "probe", "v": DISCOVERY_VERSION}
 
@@ -87,10 +91,40 @@ def is_probe(data: bytes) -> bool:
     return isinstance(obj, dict) and obj.get("service") == SERVICE_ID and obj.get("kind") == "probe"
 
 
-def _broadcast_socket() -> socket.socket:
+def _broadcast_socket(*, shared: bool = True) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if shared:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    return sock
+
+
+def _dashboard_socket(port: int) -> socket.socket:
+    """The dashboard's socket on the discovery port (sends beacons, gets probes).
+
+    On Windows two sockets sharing a UDP port with SO_REUSEADDR each get
+    broadcasts, but a unicast datagram (a probe sent to 127.0.0.1 by an agent
+    on the same PC) lands in only one of them, unpredictably. The dashboard
+    therefore takes the port exclusively there, so probes always reach it;
+    an agent on the same PC then listens on its own probe socket instead.
+    If an agent already holds the port, fall back to sharing it.
+    """
+    exclusive = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    if exclusive is not None:
+        sock = _broadcast_socket(shared=False)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+            sock.bind(("", port))
+            return sock
+        except OSError as exc:
+            log.info("discovery port %s is in use (%s); sharing it", port, exc)
+            sock.close()
+    sock = _broadcast_socket()
+    # Bind to the discovery port to also receive probes.
+    try:
+        sock.bind(("", port))
+    except OSError as exc:
+        log.warning("cannot listen for discovery probes on UDP %s: %s", port, exc)
     return sock
 
 
@@ -113,17 +147,23 @@ class DashboardBeaconServer:
 
     async def start(self) -> None:
         self._stop.clear()
-        self._sock = _broadcast_socket()
-        # Bind to the discovery port to also receive probes.
-        with contextlib.suppress(OSError):
-            self._sock.bind(("", self._port))
+        self._sock = _dashboard_socket(self._port)
         self._sock.setblocking(False)
         self._task = asyncio.ensure_future(self._run())
 
     async def _run(self) -> None:
+        try:
+            await self._serve()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("discovery beacon stopped")
+
+    async def _serve(self) -> None:
         assert self._sock is not None
         loop = asyncio.get_running_loop()
         payload = self._beacon.to_bytes()
+        answered: set[str] = set()
         while not self._stop.is_set():
             with contextlib.suppress(OSError):
                 self._sock.sendto(payload, ("255.255.255.255", self._port))
@@ -137,8 +177,14 @@ class DashboardBeaconServer:
                 except (TimeoutError, OSError):
                     continue
                 if is_probe(data):
-                    with contextlib.suppress(OSError):
+                    try:
                         self._sock.sendto(payload, addr)
+                    except OSError as exc:
+                        log.warning("could not answer a discovery probe from %s: %s", addr, exc)
+                        continue
+                    if addr[0] not in answered:  # once per PC, not every probe
+                        answered.add(addr[0])
+                        log.info("answered a discovery probe from %s", addr[0])
 
     async def stop(self) -> None:
         self._stop.set()
@@ -154,29 +200,78 @@ class DashboardBeaconServer:
 async def discover_dashboard(
     *, port: int = DEFAULT_DISCOVERY_PORT, timeout_s: float = 8.0
 ) -> Beacon | None:
-    """Agent-side: probe + listen for a beacon. Returns the first valid one."""
-    loop = asyncio.get_running_loop()
-    sock = _broadcast_socket()
-    try:
-        with contextlib.suppress(OSError):
-            sock.bind(("", port))
-        sock.setblocking(False)
-        # Nudge the server for an immediate reply.
-        with contextlib.suppress(OSError):
-            sock.sendto(json.dumps(_PROBE).encode("utf-8"), ("255.255.255.255", port))
+    """Agent-side: probe + listen for a beacon. Returns the first valid one.
 
+    Two sockets: ``probe`` (an ephemeral port of its own) asks every dashboard
+    on the LAN - and one on this very PC, via 127.0.0.1 - to answer at once,
+    and the answer comes back to that private port; ``listen`` (the discovery
+    port, shared) hears the beacons dashboards broadcast every few seconds,
+    for networks where probes do not get through.
+    """
+    loop = asyncio.get_running_loop()
+    probe_payload = json.dumps(_PROBE).encode("utf-8")
+    probe = _broadcast_socket(shared=False)
+    listen: socket.socket | None = None
+    try:
+        probe.bind(("", 0))
+        probe.setblocking(False)
+
+        def send_probes() -> None:
+            for target in ("255.255.255.255", "127.0.0.1"):
+                with contextlib.suppress(OSError):
+                    probe.sendto(probe_payload, (target, port))
+
+        # Probe before taking the shared port, so that a probe to 127.0.0.1
+        # cannot be delivered back to our own listener.
+        send_probes()
+        listen = _broadcast_socket()
+        try:
+            listen.bind(("", port))
+            listen.setblocking(False)
+        except OSError:  # held exclusively by a dashboard on this PC
+            listen.close()
+            listen = None
+        log.debug("looking for a dashboard on UDP %s (shared port: %s)", port,
+                  "yes" if listen is not None else "no")
+
+        socks = [probe] + ([listen] if listen is not None else [])
+        pending = {
+            asyncio.ensure_future(loop.sock_recvfrom(s, 2048)): s for s in socks
+        }
         deadline = loop.time() + timeout_s
-        while loop.time() < deadline:
-            remaining = deadline - loop.time()
-            try:
-                data, _ = await asyncio.wait_for(
-                    loop.sock_recvfrom(sock, 2048), timeout=max(0.1, remaining)
+        next_probe = loop.time() + PROBE_INTERVAL_S
+        try:
+            while (now := loop.time()) < deadline:
+                if now >= next_probe:
+                    send_probes()
+                    next_probe = now + PROBE_INTERVAL_S
+                done, _ = await asyncio.wait(
+                    pending,
+                    timeout=max(0.05, min(deadline, next_probe) - now),
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            except (TimeoutError, OSError):
-                continue
-            beacon = parse_beacon(data)
-            if beacon is not None:
-                return beacon
-        return None
+                for fut in done:
+                    sock = pending.pop(fut)
+                    try:
+                        data, _ = fut.result()
+                    except ConnectionResetError:
+                        # Windows reports "port unreachable" for an earlier
+                        # probe (no dashboard at 127.0.0.1); keep listening.
+                        data = b""
+                    except OSError:
+                        continue  # this socket is unusable; drop it
+                    beacon = parse_beacon(data)
+                    if beacon is not None:
+                        return beacon
+                    pending[asyncio.ensure_future(loop.sock_recvfrom(sock, 2048))] = sock
+                if not pending:
+                    break
+            return None
+        finally:
+            for fut in pending:
+                fut.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
     finally:
-        sock.close()
+        probe.close()
+        if listen is not None:
+            listen.close()

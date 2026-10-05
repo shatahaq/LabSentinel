@@ -11,9 +11,10 @@ the primary safeguard. Admins can edit, extend, import and export them.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
-from labsentinel_shared.rules import SiteRule
+from labsentinel_shared.rules import CUSTOM_SITE_CATEGORY, SiteRule
 
 
 @dataclass(frozen=True)
@@ -179,3 +180,33 @@ def rules_for(keys: list[str] | tuple[str, ...]) -> tuple[SiteRule, ...]:
 
 def rules_for_profile(mode: str) -> tuple[SiteRule, ...]:
     return rules_for(PROFILE_DEFAULTS.get(mode, ()))
+
+
+_HOST = re.compile(r"^([a-z0-9-]+\.)+[a-z0-9-]{2,}$")
+_IPV4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+def custom_site(text: str) -> SiteRule | None:
+    """A site the admin typed, as a blocklist rule; None if it is not one.
+
+    Accepts what people paste from the address bar: ``tiktok.com``,
+    ``www.tiktok.com``, ``https://www.tiktok.com/@someone/video/1``. Only
+    the site is kept, so the whole site and its subdomains are blocked
+    (Chrome/Edge URLBlocklist), not just the page that was pasted.
+    """
+    host = text.strip().lower()
+    host = re.sub(r"^[a-z]+://", "", host)
+    host = re.split(r"[/?#:]", host, maxsplit=1)[0]
+    host = host.rstrip(".")  # a pasted FQDN may end with a dot (example.com.)
+    for prefix in ("*.", "www."):
+        host = host.removeprefix(prefix)
+    if _IPV4.match(host):
+        if not all(int(part) <= 255 for part in host.split(".")):
+            return None
+        return SiteRule(pattern=host, category=CUSTOM_SITE_CATEGORY)
+    if len(host) > 253 or not _HOST.match(host):
+        return None
+    # For the window-title detector: the site's name, when it is distinctive.
+    name = host.split(".")[-2]
+    keywords = (name,) if len(name) >= 5 else ()
+    return SiteRule(pattern=host, category=CUSTOM_SITE_CATEGORY, keywords=keywords)

@@ -22,6 +22,8 @@
     selecting: false,
     selected: new Set(),
     openAgent: null,
+    focusPairing: false,
+    reportSession: undefined,  // undefined = not chosen yet; null = all sessions
   };
 
   /* ===================================================================
@@ -76,6 +78,16 @@
 
   function renderDryRunBanner() {
     const host = $("#dry-run-banner");
+    if (State.rules && State.rules.mode === "free") {
+      host.innerHTML = `
+        <div class="banner banner--info">
+          ${icon("monitor")}
+          <div><strong>Mode Bebas: hanya memantau.</strong>
+            Layar PC tetap terlihat dan aplikasi di luar daftar tetap dicatat, tetapi
+            tidak ada aplikasi yang ditutup atau situs yang diblokir.</div>
+        </div>`;
+      return;
+    }
     if (!State.rules || !State.rules.dry_run) { host.innerHTML = ""; return; }
     host.innerHTML = `
       <div class="banner">
@@ -162,9 +174,9 @@
           <div class="mode-row" id="sess-modes"></div>`;
         const modes = ["exam", "lab", "free"];
         const descs = {
-          exam: ["Ujian", "Paling ketat", "Hanya browser. Semua kategori situs diblokir."],
-          lab: ["Praktikum", "Sedang", "Browser + aplikasi mata kuliah. Situs pengganggu diblokir."],
-          free: ["Bebas", "Tanpa pembatasan", "Tidak ada yang ditutup atau diblokir."],
+          exam: ["Ujian", "Paling ketat", "Hanya browser. Semua kategori situs dan situs tambahan diblokir."],
+          lab: ["Praktikum", "Sedang", "Browser + aplikasi mata kuliah. Situs pilihan diblokir."],
+          free: ["Bebas", "Hanya memantau", "Tidak ada yang ditutup atau diblokir; tetap dicatat."],
         };
         $("#sess-modes", body).innerHTML = modes.map((m, i) => `
           <button class="mode" data-mode="${m}" aria-pressed="${i === 0}">
@@ -258,7 +270,7 @@
     const node = el(`
       <div class="feed__item" role="button" tabindex="0">
         <div class="feed__icon ${muted ? "feed__icon--muted" : ""}">
-          ${icon(v.kind === "site_title" ? "globe" : "app")}
+          ${icon({ site_title: "globe", agent_tamper: "alert" }[v.kind] || "app")}
         </div>
         <div class="feed__body">
           <div class="feed__title truncate">${esc(v.subject)}</div>
@@ -266,7 +278,7 @@
             <span>${esc(v.hostname || v.agent_id)}</span>
             <span class="tag">${esc(violationLabel(v.kind))}</span>
             ${v.detected_from_title ? '<span class="tag tag--warn">dari judul jendela</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">uji coba</span>' : ""}
+            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}
           </div>
         </div>
         <div class="feed__time">${esc(ago(v.occurred_at))}</div>
@@ -290,7 +302,7 @@
             <span class="tag">${esc(violationLabel(v.kind))}</span>
             ${v.detected_from_title
               ? '<span class="tag tag--warn">terdeteksi dari judul jendela (akurasi terbatas)</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">mode uji coba — tidak ditindak</span>' : ""}
+            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat — tidak ditindak</span>' : ""}
           </div>
           ${v.detail ? `<p style="color:var(--text-secondary);margin-bottom:var(--s-4)">${esc(v.detail)}</p>` : ""}
           <div id="shot-host"></div>`;
@@ -324,7 +336,14 @@
      Monitoring grid
      =================================================================== */
   let frameObserver = null;
-  const frameTimers = new Map();
+  // Live grid: cards on screen (id -> card) and the frame number each shows.
+  const liveCards = new Map();
+  const shownSeq = new Map();
+  let framePump = null;
+  let frameRequestInFlight = false;
+  const FRAME_POLL_MS = 200;
+  // Set while a PC's detail is open: brings its status and buttons up to date.
+  let syncOpenDetail = null;
 
   function visibleAgents() {
     const q = State.search.trim().toLowerCase();
@@ -339,14 +358,18 @@
   function renderGrid() {
     const host = $("#pc-grid");
     const list = visibleAgents();
-    stopFrameWatching();
-    host.innerHTML = "";
 
+    if (!State.agents.length || !list.length) {
+      stopFrameWatching();
+      host.innerHTML = "";
+    }
     if (!State.agents.length) {
       host.appendChild(empty({
         iconName: "monitor",
         title: "Belum ada PC yang terhubung",
-        text: "Pasang dan jalankan agent di PC peserta. Agent akan menemukan dashboard ini sendiri lewat jaringan lab — alamat IP tidak perlu diatur.",
+        text: "Pasang agent di PC peserta dengan kode pemasangan 6 digit. Agent menemukan dashboard ini sendiri lewat jaringan lab — alamat IP tidak perlu diatur.",
+        actionLabel: "Lihat kode pemasangan",
+        onAction: () => { State.focusPairing = true; global.App.goto("aturan"); },
       }));
       return;
     }
@@ -361,10 +384,38 @@
       return;
     }
 
-    list.forEach((a) => host.appendChild(pcCard(a)));
-    startFrameWatching();
+    // Refresh in place: every card's details are rebuilt (status, tags, name),
+    // but a live screen already on show is carried over, so the grid never
+    // blanks while heartbeats keep it up to date.
+    const previous = new Map($$("#pc-grid .pc").map((n) => [n.dataset.agent, n]));
+    const cards = list.map((a) => {
+      const card = pcCard(a);
+      const old = previous.get(a.agent_id);
+      const img = old && hasLiveScreen(a) ? old.querySelector("[data-screen] img") : null;
+      if (img) adoptScreen(card, img);
+      else shownSeq.delete(a.agent_id);  // nothing on show: fetch at once
+      return card;
+    });
+    host.replaceChildren(...cards);
+    const shown = new Set(list.map((a) => a.agent_id));
+    [...shownSeq.keys()].forEach((id) => { if (!shown.has(id)) shownSeq.delete(id); });
+    watchCards(cards);
+    if (syncOpenDetail) syncOpenDetail();
     $("#monitoring-sub").textContent =
       `${list.length} dari ${State.agents.length} PC ditampilkan. Klik satu PC untuk melihat layarnya lebih besar.`;
+  }
+
+  /* A disconnected PC has no screen to show (the dashboard drops its last
+     frame), so its old picture must not be carried over. */
+  function hasLiveScreen(agent) {
+    return agent.status === "online" || agent.status === "paused";
+  }
+
+  function adoptScreen(card, img) {
+    const screen = card.querySelector("[data-screen]");
+    const placeholder = screen.querySelector(".pc__placeholder");
+    if (placeholder) placeholder.remove();
+    screen.insertBefore(img, screen.firstChild);
   }
 
   // A PC is highlighted only while it is misbehaving *now*. Highlighting every
@@ -384,8 +435,11 @@
             ${icon(a.status === "online" ? "monitor" : "eye-off")}
             <span>${esc(a.status === "online" ? "Memuat layar..." : statusInfo(a.status).label)}</span>
           </div>
-          ${a.indicator_visible === false
-            ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
+          ${a.desktop_access === false
+            ? '<div class="pc__overlay"><span class="pc__tag">layar tidak terjangkau</span></div>'
+            : a.indicator_visible === false
+              ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
+          ${a.input_frozen ? '<span class="pc__frozen">❄ Dibekukan</span>' : ""}
         </div>
         <div class="pc__meta">
           <div style="min-width:0">
@@ -431,48 +485,68 @@
     return node;
   }
 
-  /* Only poll frames for cards actually on screen. */
-  function startFrameWatching() {
-    frameObserver = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const id = entry.target.dataset.agent;
-        if (entry.isIntersecting) scheduleFrame(id, entry.target);
-        else clearFrame(id);
-      });
-    }, { rootMargin: "120px" });
-    $$("#pc-grid .pc").forEach((n) => frameObserver.observe(n));
+  /* Live grid: one request fetches every new frame for the cards on screen
+     (cards scrolled out of view are not asked for). */
+  function onCardsVisible(entries) {
+    entries.forEach((entry) => {
+      const id = entry.target.dataset.agent;
+      if (entry.isIntersecting) liveCards.set(id, entry.target);
+      else liveCards.delete(id);
+    });
+  }
+
+  function watchCards(cards) {
+    if (frameObserver) frameObserver.disconnect();
+    else frameObserver = new IntersectionObserver(onCardsVisible, { rootMargin: "120px" });
+    // Cards that replaced visible ones stay live straight away; the observer
+    // corrects the set as soon as it has measured the new cards.
+    const wasLive = new Set(liveCards.keys());
+    liveCards.clear();
+    cards.forEach((card) => {
+      if (wasLive.has(card.dataset.agent)) liveCards.set(card.dataset.agent, card);
+      frameObserver.observe(card);
+    });
+    if (!framePump) pumpFrames();
   }
 
   function stopFrameWatching() {
     if (frameObserver) { frameObserver.disconnect(); frameObserver = null; }
-    frameTimers.forEach((t) => clearInterval(t));
-    frameTimers.clear();
+    if (framePump) { clearTimeout(framePump); framePump = null; }
+    liveCards.clear();
+    shownSeq.clear();  // the next grid starts empty: paint every card at once
   }
 
-  function clearFrame(id) {
-    const timer = frameTimers.get(id);
-    if (timer) { clearInterval(timer); frameTimers.delete(id); }
+  async function pumpFrames() {
+    framePump = setTimeout(pumpFrames, FRAME_POLL_MS);  // keep the beat
+    if (!liveCards.size || frameRequestInFlight) return;
+    frameRequestInFlight = true;
+    try {
+      const seen = {};
+      liveCards.forEach((_, id) => { seen[id] = shownSeq.get(id) || 0; });
+      const res = await API.getFrames(seen);
+      if (!res.ok) return;
+      res.frames.forEach((f) => {
+        const card = liveCards.get(f.agent_id);
+        if (!card) return;
+        paintScreen(card.querySelector("[data-screen]"), f.jpeg_b64, "");
+        shownSeq.set(f.agent_id, f.seq);
+      });
+    } finally {
+      frameRequestInFlight = false;
+    }
   }
 
-  function scheduleFrame(id, card) {
-    if (frameTimers.has(id)) return;
-    const paint = async () => {
-      const res = await API.getFrame(id);
-      const screen = card.querySelector("[data-screen]");
-      if (!screen || !res.ok) return;
-      if (!res.frame) return;
-      let img = screen.querySelector("img");
-      if (!img) {
-        img = document.createElement("img");
-        img.alt = "";
-        const ph = screen.querySelector(".pc__placeholder");
-        if (ph) ph.remove();
-        screen.insertBefore(img, screen.firstChild);
-      }
-      img.src = `data:image/jpeg;base64,${res.frame.jpeg_b64}`;
-    };
-    paint();
-    frameTimers.set(id, setInterval(paint, 1200));
+  function paintScreen(screen, jpegB64, alt) {
+    if (!screen) return;
+    let img = screen.querySelector("img");
+    if (!img) {
+      img = document.createElement("img");
+      img.alt = alt;
+      const ph = screen.querySelector(".pc__placeholder");
+      if (ph) ph.remove();
+      screen.insertBefore(img, screen.firstChild);
+    }
+    img.src = `data:image/jpeg;base64,${jpegB64}`;
   }
 
   function syncFilterButtons() {
@@ -550,13 +624,27 @@
   }
 
   /* ---- single PC ---- */
-  let detailTimer = null;
+  // Stops the PC detail on show (its frame timer and close watcher), if any.
+  let closeOpenDetail = null;
 
   function openPc(agentId) {
-    const agent = State.agents.find((a) => a.agent_id === agentId);
-    if (!agent) return;
+    const found = State.agents.find((a) => a.agent_id === agentId);
+    if (!found) return null;
+    // A confirmation replaces this view and reopens it afterwards: make sure
+    // the previous one's timer and watcher never outlive it.
+    if (closeOpenDetail) closeOpenDetail();
+    const agent = { ...found };
     State.openAgent = agentId;
     API.setViewing(true, agentId);
+
+    let detailTimer = null;
+    let paintFreeze = () => {};
+    // Confirmations take over the dialog; come back to this PC afterwards.
+    const confirmHere = async (options) => {
+      const ok = await confirm(options);
+      openPc(agentId);
+      return ok;
+    };
 
     const dialog = openDialog({
       title: agent.hostname || agentId,
@@ -569,24 +657,39 @@
           </div>
           <div class="detail__facts" id="detail-facts"></div>`;
         paintDetail(agent);
+        // Live: ask often, but only new frames come back (the agent streams
+        // this PC at a higher rate while it is open).
+        let seq = 0;
+        let busy = false;
         detailTimer = setInterval(async () => {
-          const res = await API.getFrame(agentId);
-          const screen = $("#detail-screen");
-          if (!screen || !res.ok || !res.frame) return;
-          let img = screen.querySelector("img");
-          if (!img) {
-            img = document.createElement("img");
-            img.alt = "Layar peserta";
-            screen.innerHTML = "";
-            screen.appendChild(img);
+          if (busy) return;
+          busy = true;
+          try {
+            const res = await API.getFrames({ [agentId]: seq });
+            if (res.ok && res.frames.length) {
+              const f = res.frames[0];
+              paintScreen($("#detail-screen"), f.jpeg_b64, "Layar peserta");
+              seq = f.seq;
+            }
+          } finally {
+            busy = false;
           }
-          img.src = `data:image/jpeg;base64,${res.frame.jpeg_b64}`;
-        }, 400);
+        }, 150);
       },
       footer: (foot, close) => {
         const pause = el('<button class="btn">Jeda PC ini</button>');
         const resume = el('<button class="btn">Lanjutkan</button>');
         const lock = el('<button class="btn">Kunci layar</button>');
+        const freeze = el('<button class="btn"></button>');
+        paintFreeze = () => {
+          const frozen = !!agent.input_frozen;
+          freeze.textContent = frozen ? "Cairkan input" : "Bekukan input";
+          freeze.classList.toggle("btn--warn", frozen);
+          // No desktop worker means no way to freeze this PC right now.
+          freeze.disabled = agent.desktop_access === false;
+          freeze.title = freeze.disabled ? "Layar PC ini sedang tidak terjangkau" : "";
+        };
+        paintFreeze();
         const done = el('<button class="btn btn--primary">Tutup</button>');
         pause.addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
           reportToast(await API.pause([agentId]), "Jeda"); global.App.refresh();
@@ -594,32 +697,69 @@
         resume.addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
           reportToast(await API.resume([agentId]), "Lanjutkan"); global.App.refresh();
         }));
-        lock.addEventListener("click", async (e) => {
-          const ok = await confirm({
+        lock.addEventListener("click", async () => {
+          const ok = await confirmHere({
             title: "Kunci layar PC ini?",
             message: "Peserta harus memasukkan kata sandi Windows untuk masuk kembali.",
             confirmLabel: "Kunci layar", danger: true,
           });
-          if (!ok) return;
-          await withBusy(e.currentTarget, async () => reportToast(await API.lockScreens([agentId]), "Kunci layar"));
+          if (ok) reportToast(await API.lockScreens([agentId]), "Kunci layar");
+        });
+        freeze.addEventListener("click", async (e) => {
+          const turningOn = !agent.input_frozen;
+          const send = async () => {
+            const res = await API.freezeInput(turningOn, [agentId]);
+            reportToast(res, turningOn ? "Bekukan input" : "Cairkan input");
+            if (res.ok) setFrozen(agentId, turningOn);
+            global.App.refresh();
+          };
+          if (!turningOn) {  // releasing needs no confirmation
+            await withBusy(e.currentTarget, send);
+            return;
+          }
+          const ok = await confirmHere({
+            title: "Bekukan keyboard & mouse PC ini?",
+            message: "Peserta tidak bisa memakai keyboard dan mouse sampai Anda cairkan. "
+              + "Layar peserta menampilkan pesan bahwa PC dibekukan pengawas.",
+            confirmLabel: "Bekukan", danger: true,
+          });
+          if (ok) await send();
         });
         done.addEventListener("click", close);
-        foot.append(pause, resume, lock, done);
+        foot.append(pause, resume, lock, freeze, done);
       },
     });
 
+    // Keep the open view in step with heartbeats (status, freeze, facts).
+    syncOpenDetail = () => {
+      const latest = State.agents.find((a) => a.agent_id === agentId);
+      if (latest) Object.assign(agent, latest);
+      paintDetail(agent);
+      paintFreeze();
+    };
+
     // Stop the hi-res stream as soon as the admin closes the view.
     const scrim = $("#scrim");
-    const observer = new MutationObserver(() => {
-      if (scrim.hidden) {
-        observer.disconnect();
-        if (detailTimer) { clearInterval(detailTimer); detailTimer = null; }
-        State.openAgent = null;
-        API.setViewing(global.App.currentPage() === "monitoring", null);
-      }
-    });
+    const observer = new MutationObserver(() => { if (scrim.hidden) stop(); });
+    const stop = () => {
+      observer.disconnect();
+      clearInterval(detailTimer);
+      if (closeOpenDetail !== stop) return;  // already replaced by a newer view
+      closeOpenDetail = null;
+      syncOpenDetail = null;
+      State.openAgent = null;
+      API.setViewing(global.App.currentPage() === "monitoring", null);
+    };
+    closeOpenDetail = stop;
     observer.observe(scrim, { attributes: true, attributeFilter: ["hidden"] });
     return dialog;
+  }
+
+  /* Record a freeze change locally until the next heartbeat confirms it. */
+  function setFrozen(agentId, frozen) {
+    const a = State.agents.find((x) => x.agent_id === agentId);
+    if (a) a.input_frozen = frozen;
+    if (syncOpenDetail) syncOpenDetail();
   }
 
   function paintDetail(agent) {
@@ -632,6 +772,10 @@
       ["RAM agent", `${Math.round(agent.mem_mb || 0)} MB`],
       ["Kabar terakhir", ago(agent.last_heartbeat)],
       ["Indikator peserta", agent.indicator_visible === false ? "Tidak terlihat" : "Terlihat"],
+      ["Akses layar", agent.desktop_access === false
+        ? "Tidak terjangkau — layar, judul jendela, dan penutupan aplikasi tidak berjalan"
+        : "Normal"],
+      ["Input peserta", agent.input_frozen ? "Dibekukan pengawas" : "Normal"],
     ];
     const host = $("#detail-facts");
     if (host) {
@@ -668,12 +812,11 @@
         <div class="card">
           <div class="card__head"><span class="card__title">Aplikasi yang diizinkan</span></div>
           <div class="card__body">
-            <p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
-              Aplikasi di luar daftar ini akan ditutup otomatis. Browser dan Windows Explorer
-              selalu diizinkan dan tidak dapat dihapus.</p>
+            ${appsNote(rules)}
             <div class="chip-input" id="wl-chips"></div>
             <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
-              <input class="input" id="wl-new" placeholder="contoh: code.exe" style="flex:1">
+              <input class="input" id="wl-new" placeholder="contoh: code.exe" style="flex:1"
+                     aria-label="Nama berkas aplikasi">
               <button class="btn" id="wl-add">Tambah</button>
             </div>
           </div>
@@ -681,10 +824,21 @@
 
         <div class="card">
           <div class="card__head"><span class="card__title">Situs yang diblokir</span>
-            <div class="card__actions"><span class="tag">${rules.site_count} situs</span></div>
+            <div class="card__actions"><span class="tag" id="site-count">${rules.site_count} situs</span></div>
           </div>
           <div class="card__body">
+            ${sitesNote(rules)}
             <div class="check-list" id="cat-list"></div>
+            <div style="font-weight:var(--weight-medium);margin:var(--s-4) 0 var(--s-1)">Situs tambahan</div>
+            <p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
+              Diblokir di mode Praktikum dan Ujian. Tempel alamatnya; seluruh situs ikut
+              diblokir, termasuk subdomainnya.</p>
+            <div class="chip-input" id="site-chips"></div>
+            <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
+              <input class="input" id="site-new" placeholder="contoh: tiktok.com" style="flex:1"
+                     aria-label="Alamat situs">
+              <button class="btn" id="site-add">Tambah</button>
+            </div>
           </div>
         </div>
       </div>
@@ -697,7 +851,8 @@
             <span>
               <div style="font-weight:var(--weight-medium)">Mode uji coba (hanya mencatat)</div>
               <div style="font-size:var(--text-sm);color:var(--text-secondary)">
-                Pelanggaran dicatat, tapi aplikasi tidak ditutup dan situs tidak diblokir.</div>
+                Pelanggaran dicatat, tapi aplikasi tidak ditutup dan situs tidak diblokir.
+                ${rules.mode === "free" ? "Di mode Bebas tidak ada yang ditindak, apa pun pilihan ini." : ""}</div>
             </span>
           </label>
           <label style="display:block;max-width:320px">
@@ -713,7 +868,10 @@
               Peserta diberi waktu menyimpan pekerjaan sebelum aplikasi ditutup.</div>
           </label>
         </div>
-      </div>`;
+      </div>
+
+      <div class="card" id="pairing-card" style="margin-top:var(--s-4)"></div>`;
+    renderPairing();
 
     // modes
     $("#mode-row").innerHTML = res.modes.map((m) => `
@@ -781,9 +939,43 @@
     $$("#cat-list [data-cat]").forEach((box) => box.addEventListener("change", async () => {
       const keys = $$("#cat-list [data-cat]").filter((b) => b.checked).map((b) => b.dataset.cat);
       const r = await API.setSiteCategories(keys);
-      if (r.ok) toast("Daftar situs diperbarui", `${r.rules.site_count} situs diblokir.`, "ok");
+      if (r.ok) { paintSiteCount(r.rules); toast("Daftar situs diperbarui", siteCountText(r.rules), "ok"); }
       else { toast("Gagal", r.error, "error"); box.checked = !box.checked; }
     }));
+
+    // sites added by hand
+    function paintSiteCount(next) {
+      rules.site_count = next.site_count;
+      $("#site-count").textContent = `${next.site_count} situs`;
+    }
+    function paintSites() {
+      $("#site-chips").innerHTML = rules.custom_sites.length
+        ? rules.custom_sites.map((p) => `
+            <span class="chip">${esc(p)}
+              <button data-remove-site="${esc(p)}" aria-label="Hapus ${esc(p)}">${icon("x", "")}</button>
+            </span>`).join("")
+        : '<span style="color:var(--text-tertiary);font-size:var(--text-sm);padding:2px 4px">Belum ada</span>';
+      $$("#site-chips [data-remove-site]").forEach((b) => b.addEventListener("click", async () => {
+        const next = rules.custom_sites.filter((x) => x !== b.dataset.removeSite);
+        const r = await API.setCustomSites(next);
+        if (r.ok) { rules.custom_sites = r.rules.custom_sites; paintSites(); paintSiteCount(r.rules); toast("Situs dihapus", b.dataset.removeSite, "ok"); }
+        else toast("Gagal", r.error, "error");
+      }));
+    }
+    paintSites();
+    const addSite = async () => {
+      const text = $("#site-new").value.trim();
+      if (!text) return;
+      const r = await API.setCustomSites(rules.custom_sites.concat([text]));
+      if (r.ok) {
+        const added = r.rules.custom_sites.filter((x) => !rules.custom_sites.includes(x));
+        rules.custom_sites = r.rules.custom_sites; $("#site-new").value = ""; paintSites(); paintSiteCount(r.rules);
+        toast(added.length ? "Situs ditambahkan" : "Sudah ada di daftar",
+              added.length ? added.join(", ") : "Situs itu sudah diblokir.", added.length ? "ok" : "info");
+      } else toast("Alamat tidak valid", r.error, "warn");
+    };
+    $("#site-add").addEventListener("click", addSite);
+    $("#site-new").addEventListener("keydown", (e) => { if (e.key === "Enter") addSite(); });
 
     // behaviour
     $("#opt-dryrun").addEventListener("change", async (e) => {
@@ -800,16 +992,209 @@
     });
   }
 
+  /* What the app and site lists do in the current mode (Aturan page). */
+  function appsNote(rules) {
+    if (rules.mode === "exam") {
+      return `<div class="banner banner--info">${icon("app")}<div>
+        <strong>Mode Ujian: hanya browser.</strong> Daftar ini tidak berlaku saat Ujian;
+        disimpan untuk Praktikum.</div></div>`;
+    }
+    const action = rules.acts ? "akan ditutup otomatis" : "hanya dicatat, tidak ditutup";
+    return `<p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
+      Aplikasi di luar daftar ini ${action}. Browser dan Windows Explorer selalu diizinkan
+      dan tidak dapat dihapus.</p>`;
+  }
+
+  function sitesNote(rules) {
+    if (rules.mode === "exam") {
+      return `<div class="banner banner--info">${icon("globe")}<div>
+        <strong>Mode Ujian: semua kategori diblokir,</strong> ditambah situs tambahan.
+        Pilihan kategori di bawah dipakai saat Praktikum.</div></div>`;
+    }
+    if (rules.mode === "free") {
+      return `<div class="banner banner--info">${icon("globe")}<div>
+        <strong>Mode Bebas: tidak ada situs yang diblokir.</strong>
+        Daftar di bawah dipakai saat Praktikum dan Ujian.</div></div>`;
+    }
+    return "";
+  }
+
+  function siteCountText(rules) {
+    return rules.mode === "free"
+      ? "Disimpan; berlaku saat Praktikum dan Ujian."
+      : `${rules.site_count} situs diblokir.`;
+  }
+
+  /* Pemasangan PC: the 6-digit code an admin types once per lab PC. */
+  function groupCode(code) {
+    return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+  }
+
+  async function renderPairing() {
+    const host = $("#pairing-card");
+    if (!host) return;
+    const res = await API.getPairing();
+    if (!res.ok) {
+      host.innerHTML = `
+        <div class="card__head"><span class="card__title">Pemasangan PC baru</span></div>
+        <div class="card__body"></div>`;
+      host.querySelector(".card__body").appendChild(
+        empty({ iconName: "alert", title: "Kode pemasangan tidak dapat dimuat", text: res.error }));
+      return;
+    }
+
+    const open = res.open;
+    const state = open
+      ? `<span class="status status--online">${icon("dot", "status__icon")}Terbuka</span>`
+      : `<span class="status status--offline">${icon("lock", "status__icon")}Ditutup</span>`;
+
+    host.innerHTML = `
+      <div class="card__head">
+        <span class="card__title">Pemasangan PC baru</span>
+        <div class="card__actions">${state}</div>
+      </div>
+      <div class="card__body pairing">
+        <div class="pairing__code-block">
+          <div class="pairing__label" id="pair-code-label">Kode pemasangan</div>
+          <div class="pairing__code ${open ? "" : "is-closed"}" aria-labelledby="pair-code-label"
+               aria-describedby="pair-code-note">${esc(groupCode(res.code))}</div>
+          <div class="pairing__note" id="pair-code-note">${open
+            ? `${res.paired_count} PC sudah terpasang. Kode hanya dipakai sekali per PC.`
+            : `Pendaftaran ditutup: PC baru ditolak meskipun kodenya benar. ${res.paired_count} PC yang sudah terpasang tetap terhubung.`}</div>
+          <div class="pairing__actions">
+            <button class="btn btn--sm" id="pair-rotate" ${open ? "" : "disabled"}>Buat kode baru</button>
+            <button class="btn btn--sm" id="pair-toggle">${open ? "Tutup pendaftaran PC baru" : "Buka pendaftaran PC baru"}</button>
+          </div>
+        </div>
+        <div class="pairing__steps">
+          <div class="pairing__label">Cara memasang</div>
+          <ol class="steps">
+            <li>Pasang Lab Sentinel Agent di PC peserta.</li>
+            <li>Jalankan sekali dengan kode ini:
+              <code class="cmd">labsentinel-agent --pair ${esc(res.code)}</code></li>
+            <li>PC muncul di <strong>Layar PC</strong> dalam beberapa detik. Kode tidak perlu diketik lagi.</li>
+          </ol>
+          <p class="pairing__hint">Setelah semua PC lab terpasang, tutup pendaftaran agar tidak ada PC lain yang bisa ikut terhubung.</p>
+        </div>
+      </div>`;
+
+    $("#pair-rotate").addEventListener("click", async (e) => {
+      const ok = await confirm({
+        title: "Buat kode pemasangan baru?",
+        message: "Kode lama langsung tidak berlaku. PC yang sudah terpasang tidak terpengaruh.",
+        confirmLabel: "Buat kode baru",
+      });
+      if (!ok) return;
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.rotatePairingCode();
+        if (r.ok) { toast("Kode baru dibuat", groupCode(r.code), "ok"); renderPairing(); }
+        else toast("Gagal", r.error, "error");
+      });
+    });
+
+    $("#pair-toggle").addEventListener("click", async (e) => {
+      if (open) {
+        const ok = await confirm({
+          title: "Tutup pendaftaran PC baru?",
+          message: "PC yang belum terpasang tidak akan bisa terhubung sampai pendaftaran dibuka lagi. PC yang sudah terpasang tetap terhubung seperti biasa.",
+          confirmLabel: "Tutup pendaftaran",
+        });
+        if (!ok) return;
+      }
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.setPairingOpen(!open);
+        if (r.ok) {
+          toast(r.open ? "Pendaftaran dibuka" : "Pendaftaran ditutup",
+                r.open ? "PC baru bisa dipasang dengan kode." : "PC baru tidak bisa terhubung.", "ok");
+          renderPairing();
+        } else toast("Gagal", r.error, "error");
+      });
+    });
+
+    if (State.focusPairing) {
+      State.focusPairing = false;
+      host.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }
+
   function normalizeCat(category) {
     return { "AI chatbot": "ai_chatbot", "situs jawaban": "situs_jawaban",
              "game online": "game_online", "media sosial": "media_sosial",
              "hiburan": "hiburan" }[category] || category;
   }
 
+  /* Session picker + downloads. A report is always about one session, so the
+     download buttons wait until one is chosen. */
+  async function renderReportActions() {
+    const host = $("#report-actions");
+    const res = await API.listSessions();
+    const sessions = res.ok ? res.sessions.filter((s) => s.started_at) : [];
+    if (State.reportSession === undefined) {
+      State.reportSession = sessions.length ? sessions[0].id : null;  // newest first
+    }
+    const opt = (s) => {
+      const when = datetime(s.started_at);
+      const live = s.status === "active" ? " · berjalan" : "";
+      return `<option value="${s.id}" ${State.reportSession === s.id ? "selected" : ""}>
+        ${esc(s.name)} — ${esc(when)}${live}</option>`;
+    };
+    host.innerHTML = `
+      <label class="visually-hidden" for="report-session">Sesi</label>
+      <select class="input select" id="report-session">
+        <option value="" ${State.reportSession === null ? "selected" : ""}>Semua sesi</option>
+        ${sessions.map(opt).join("")}
+      </select>
+      <button class="btn" id="report-pdf">${icon("download", "btn__icon")}Unduh PDF</button>
+      <button class="btn" id="report-xlsx">${icon("download", "btn__icon")}Unduh Excel</button>`;
+
+    const sync = () => {
+      const none = State.reportSession === null;
+      ["#report-pdf", "#report-xlsx"].forEach((sel) => {
+        $(sel).disabled = none;
+        $(sel).title = none ? "Pilih satu sesi untuk membuat laporan." : "";
+      });
+    };
+    sync();
+    $("#report-session").addEventListener("change", (e) => {
+      State.reportSession = e.target.value ? parseInt(e.target.value, 10) : null;
+      sync();
+      renderViolationRows();
+    });
+    const download = (fmt) => async (e) => {
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.exportReport(State.reportSession, fmt);
+        if (!r.ok) { toast("Laporan gagal dibuat", r.error, "error"); return; }
+        saveBase64(r.b64, r.filename, r.mime);
+        toast("Laporan dibuat", r.saved_to ? `Salinan tersimpan di ${r.saved_to}` : r.filename, "ok");
+      });
+    };
+    $("#report-pdf").addEventListener("click", download("pdf"));
+    $("#report-xlsx").addEventListener("click", download("xlsx"));
+  }
+
+  function saveBase64(b64, filename, mime) {
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
   async function renderViolations() {
+    await renderReportActions();
+    await renderViolationRows();
+  }
+
+  async function renderViolationRows() {
     const host = $("#violations-table");
     host.innerHTML = '<div class="skeleton" style="height:200px;margin:var(--s-4)"></div>';
-    const res = await API.getViolations();
+    const res = await API.getViolations(State.reportSession || null, 1000);
     if (!res.ok) {
       host.innerHTML = "";
       host.appendChild(empty({ iconName: "alert", title: "Gagal memuat", text: res.error }));
@@ -819,7 +1204,9 @@
       host.innerHTML = "";
       host.appendChild(empty({
         iconName: "check", title: "Belum ada pelanggaran tercatat",
-        text: "Riwayat akan terisi saat peserta membuka aplikasi atau situs yang tidak diizinkan.",
+        text: State.reportSession
+          ? "Tidak ada pelanggaran pada sesi ini. Laporannya tetap bisa diunduh sebagai bukti sesi berjalan tertib."
+          : "Riwayat akan terisi saat peserta membuka aplikasi atau situs yang tidak diizinkan.",
       }));
       return;
     }
@@ -835,7 +1222,7 @@
             <td class="num">${esc(datetime(v.occurred_at))}</td>
             <td class="truncate">${esc(v.hostname || v.agent_id)}</td>
             <td class="truncate">${esc(v.subject)}
-              ${v.dry_run ? '<span class="tag tag--muted">uji coba</span>' : ""}</td>
+              ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}</td>
             <td>${esc(violationLabel(v.kind))}
               ${v.detected_from_title ? '<span class="tag tag--warn">judul jendela</span>' : ""}</td>
             <td class="cell--right">${v.has_screenshot ? "Ada" : "—"}</td>
@@ -846,6 +1233,42 @@
       const v = res.violations.find((x) => String(x.id) === row.dataset.id);
       if (v) openViolation(v);
     }));
+  }
+
+  // Plain-language names for audit actions (ADR-0005: no technical terms in
+  // the UI). The raw code stays available as a tooltip for support.
+  const ACTION_LABEL = {
+    "command.pause": "Menjeda PC",
+    "command.pause.reapply": "Menjeda ulang PC yang tersambung kembali",
+    "command.resume": "Melanjutkan PC",
+    "command.lock_screen": "Mengunci layar",
+    "command.freeze_input": "Membekukan / mencairkan keyboard & mouse",
+    "command.broadcast_message": "Mengirim pesan",
+    "command.set_dry_run": "Mengubah mode uji coba",
+    "command.set_stream": "Mengatur tampilan layar",
+    "rules.update": "Mengubah aturan",
+    "session.start": "Memulai sesi",
+    "session.end": "Mengakhiri sesi",
+    "session.schedule": "Menjadwalkan sesi",
+    "session.cancel": "Membatalkan sesi",
+    "session.missed": "Sesi terjadwal terlewat",
+    "pairing.success": "PC dipasangkan",
+    "pairing.failed": "Kode pemasangan salah",
+    "pairing.refused": "PC baru ditolak (pendaftaran ditutup)",
+    "pairing.rotate": "Membuat kode pemasangan baru",
+    "pairing.open": "Membuka pendaftaran PC baru",
+    "pairing.close": "Menutup pendaftaran PC baru",
+    "pairing.revoke": "Mencabut pemasangan PC",
+    "report.export": "Mengunduh laporan sesi",
+  };
+
+  function actionLabel(code) {
+    if (ACTION_LABEL[code]) return ACTION_LABEL[code];
+    if (code.endsWith(".hasil")) {
+      const base = ACTION_LABEL[code.slice(0, -".hasil".length)];
+      if (base) return `Hasil: ${base.charAt(0).toLowerCase()}${base.slice(1)}`;
+    }
+    return code;
   }
 
   async function renderAudit() {
@@ -869,13 +1292,13 @@
       <table class="table">
         <thead><tr>
           <th style="width:150px">Waktu</th><th style="width:130px">Oleh</th>
-          <th style="width:220px">Tindakan</th><th>Sasaran</th><th style="width:170px">Hasil</th>
+          <th style="width:300px">Tindakan</th><th>Sasaran</th><th style="width:170px">Hasil</th>
         </tr></thead>
         <tbody>${res.entries.map((e) => `
           <tr>
             <td class="num">${esc(datetime(e.ts))}</td>
             <td>${esc(e.actor)}</td>
-            <td class="mono">${esc(e.action)}</td>
+            <td title="${esc(e.action)}">${esc(actionLabel(e.action))}</td>
             <td class="truncate">${esc(e.target || "—")}</td>
             <td>${esc(e.result || "—")}</td>
           </tr>`).join("")}

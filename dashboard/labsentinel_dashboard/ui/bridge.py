@@ -26,21 +26,27 @@ import threading
 import time
 from collections import deque
 from collections.abc import Coroutine
+from pathlib import Path
 from typing import Any
 
 from labsentinel_dashboard.domain.events import EventBus
-from labsentinel_dashboard.domain.rules_service import RulesService
+from labsentinel_dashboard.domain.pairing import PairingService
+from labsentinel_dashboard.domain.rules_service import RulesService, custom_sites, for_agents
 from labsentinel_dashboard.domain.service import CommandReport, DashboardService
 from labsentinel_dashboard.domain.session_presets import PROFILE_LABELS
 from labsentinel_dashboard.domain.sessions import SessionError, SessionService
-from labsentinel_dashboard.domain.site_presets import ALL_CATEGORIES, BY_KEY, rules_for
+from labsentinel_dashboard.domain.site_presets import ALL_CATEGORIES, BY_KEY, custom_site, rules_for
 from labsentinel_dashboard.storage.db import Database
 from labsentinel_shared.enums import EnforcementMode
-from labsentinel_shared.rules import AppRule, RuleSet, SiteRule
+from labsentinel_shared.rules import CUSTOM_SITE_CATEGORY, AppRule, RuleSet
 
 log = logging.getLogger("labsentinel.dashboard.ui")
 
 MAX_BUFFERED_EVENTS = 2000
+REPORT_FORMATS = {
+    "pdf": ("pdf", "application/pdf"),
+    "xlsx": ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+}
 CALL_TIMEOUT_S = 20.0
 
 
@@ -54,12 +60,16 @@ class UiBridge:
         db: Database,
         bus: EventBus,
         loop: asyncio.AbstractEventLoop,
+        pairing: PairingService | None = None,
+        reports_dir: Path | None = None,
         actor: str = "pengawas",
     ) -> None:
         self._svc = service
         self._sessions = sessions
         self._rules = rules
         self._db = db
+        self._pairing = pairing
+        self._reports_dir = reports_dir
         self._loop = loop
         self._actor = actor
         self._events: deque[dict[str, Any]] = deque(maxlen=MAX_BUFFERED_EVENTS)
@@ -150,6 +160,30 @@ class UiBridge:
             }
         )
 
+    def get_frames(self, seen: dict[str, Any]) -> dict[str, Any]:
+        """New frames for many PCs at once (the live grid and detail view).
+
+        ``seen`` maps agent id -> frame number already on screen (0 = none);
+        only PCs with a newer frame are returned, with their new number.
+        """
+        try:
+            wanted = {str(k): int(v or 0) for k, v in dict(seen or {}).items()}
+        except (TypeError, ValueError):
+            return self._err("Permintaan frame tidak valid.")
+        now = time.time()
+        return self._ok(frames=[
+            {
+                "agent_id": agent_id,
+                "seq": seq,
+                "jpeg_b64": f.jpeg_b64,
+                "width": f.width,
+                "height": f.height,
+                "hi_res": f.hi_res,
+                "age_s": max(0.0, now - f.captured_at),
+            }
+            for agent_id, seq, f in self._svc.frames_newer(wanted)
+        ])
+
     def set_viewing(self, grid_open: bool, focused_agent: str | None = None) -> dict[str, Any]:
         """Tell agents what the admin is looking at (drives streaming level)."""
         try:
@@ -173,6 +207,11 @@ class UiBridge:
 
     def lock_screens(self, agent_ids: list[str] | None = None) -> dict[str, Any]:
         return self._command(lambda: self._svc.lock_screens(agent_ids, actor=self._actor))
+
+    def freeze_input(self, on: bool, agent_ids: list[str] | None = None) -> dict[str, Any]:
+        return self._command(
+            lambda: self._svc.freeze_input(agent_ids, bool(on), actor=self._actor)
+        )
 
     def broadcast(self, text: str, agent_ids: list[str] | None = None) -> dict[str, Any]:
         return self._command(lambda: self._svc.broadcast(agent_ids, str(text), actor=self._actor))
@@ -204,7 +243,7 @@ class UiBridge:
             return self._err("Mode tidak dikenal.")
         try:
             ruleset = self._rules.update(actor=self._actor, mode=enforcement)
-            reached = self._run(self._svc.push_rules(ruleset))
+            reached = self._run(self._svc.push_rules(for_agents(ruleset)))
             return self._ok(rules=_rules_dict(ruleset), reached=reached)
         except Exception:
             log.exception("set_mode failed")
@@ -223,22 +262,34 @@ class UiBridge:
         return self._update_rules(app_whitelist=apps)
 
     def set_site_categories(self, keys: list[str]) -> dict[str, Any]:
+        """Choose the preset categories; the sites added by hand stay."""
         unknown = [k for k in keys if k not in BY_KEY]
         if unknown:
             return self._err(f"Kategori tidak dikenal: {', '.join(unknown)}")
-        return self._update_rules(site_blocklist=rules_for(list(keys)))
+        presets = rules_for(list(keys))
+        known = {r.pattern for r in presets}
+        added = tuple(r for r in custom_sites(self._rules.current()) if r.pattern not in known)
+        return self._update_rules(site_blocklist=presets + added)
 
-    def set_custom_sites(self, patterns: list[str]) -> dict[str, Any]:
-        """Replace the blocklist with explicit patterns (import / manual edit)."""
-        try:
-            rules = tuple(
-                SiteRule(pattern=p.strip(), category="kustom")
-                for p in dict.fromkeys(patterns)
-                if str(p).strip()
-            )
-        except Exception:
-            return self._err("Daftar situs tidak valid.")
-        return self._update_rules(site_blocklist=rules)
+    def set_custom_sites(self, sites: list[str]) -> dict[str, Any]:
+        """Replace the sites added by hand; the chosen categories stay.
+
+        Each entry is what the admin typed or pasted (a site or an address
+        bar URL); it is reduced to the site, so the whole site is blocked.
+        """
+        added = []
+        for text in dict.fromkeys(str(s) for s in sites):
+            if not text.strip():
+                continue
+            rule = custom_site(text)
+            if rule is None:
+                return self._err(f"“{text.strip()}” bukan alamat situs. Contoh: tiktok.com")
+            added.append(rule)
+        presets = tuple(r for r in self._rules.current().site_blocklist
+                        if r.category != CUSTOM_SITE_CATEGORY)
+        known = {r.pattern for r in presets}
+        unique = {r.pattern: r for r in added if r.pattern not in known}
+        return self._update_rules(site_blocklist=presets + tuple(unique.values()))
 
     def set_close_grace(self, seconds: int) -> dict[str, Any]:
         try:
@@ -252,7 +303,7 @@ class UiBridge:
     def _update_rules(self, **changes: Any) -> dict[str, Any]:
         try:
             ruleset = self._rules.update(actor=self._actor, **changes)
-            reached = self._run(self._svc.push_rules(ruleset))
+            reached = self._run(self._svc.push_rules(for_agents(ruleset)))
             return self._ok(rules=_rules_dict(ruleset), reached=reached)
         except Exception:
             log.exception("rule update failed")
@@ -309,6 +360,100 @@ class UiBridge:
     def list_sessions(self) -> dict[str, Any]:
         return self._ok(sessions=[_session_dict(s) for s in self._db.list_sessions(limit=100)])
 
+    # ------------------------------------------------------------ reports
+    def export_report(self, session_id: int, fmt: str) -> dict[str, Any]:
+        """Build a session report as PDF or Excel.
+
+        Returned as base64 so the page can offer it as a download, and also
+        saved under the dashboard's data folder so a copy survives a closed
+        browser tab.
+        """
+        import base64
+
+        from labsentinel_dashboard.reports import ReportError, build_session_report
+
+        kind = str(fmt).lower()
+        if kind not in REPORT_FORMATS:
+            return self._err("Format laporan tidak dikenal.")
+        try:
+            report = build_session_report(self._db, int(session_id))
+            if kind == "pdf":
+                from labsentinel_dashboard.reports.pdf import render_pdf
+
+                data = render_pdf(report)
+            else:
+                from labsentinel_dashboard.reports.xlsx import render_xlsx
+
+                data = render_xlsx(report)
+        except ReportError as exc:
+            return self._err(str(exc))
+        except (TypeError, ValueError):
+            return self._err("Sesi tidak valid.")
+        except Exception:
+            log.exception("export_report failed")
+            return self._err("Gagal membuat laporan.")
+
+        ext, mime = REPORT_FORMATS[kind]
+        filename = report.filename(ext)
+        saved_to = ""
+        if self._reports_dir is not None:
+            try:
+                self._reports_dir.mkdir(parents=True, exist_ok=True)
+                target = self._reports_dir / filename
+                target.write_bytes(data)
+                saved_to = str(target)
+            except OSError:
+                log.warning("could not save a copy of %s", filename, exc_info=True)
+        self._db.audit(
+            actor=self._actor, action="report.export", target=report.session.name,
+            details={"session_id": report.session.id, "format": kind}, result="ok",
+        )
+        return self._ok(
+            filename=filename, mime=mime, saved_to=saved_to,
+            b64=base64.b64encode(data).decode("ascii"),
+        )
+
+    # ------------------------------------------------------------ pairing
+    def get_pairing(self) -> dict[str, Any]:
+        """The 6-digit code an admin types when installing an agent."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            return self._pairing_state()
+        except Exception:
+            log.exception("get_pairing failed")
+            return self._err("Gagal memuat kode pemasangan.")
+
+    def rotate_pairing_code(self) -> dict[str, Any]:
+        """Issue a fresh code. PCs that are already paired keep working."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            self._pairing.rotate_code(actor=self._actor)
+            return self._pairing_state()
+        except Exception:
+            log.exception("rotate_pairing_code failed")
+            return self._err("Gagal membuat kode baru.")
+
+    def set_pairing_open(self, open_: bool) -> dict[str, Any]:
+        """Open or close registration of new PCs."""
+        if self._pairing is None:
+            return self._err("Pemasangan PC tidak tersedia.")
+        try:
+            self._pairing.set_open(bool(open_), actor=self._actor)
+            return self._pairing_state()
+        except Exception:
+            log.exception("set_pairing_open failed")
+            return self._err("Gagal mengubah pendaftaran PC.")
+
+    def _pairing_state(self) -> dict[str, Any]:
+        assert self._pairing is not None
+        return self._ok(
+            code=self._pairing.code,
+            open=self._pairing.is_open,
+            paired_count=len(self._db.paired_agent_ids()),
+        )
+
     # ------------------------------------------------------------ history
     def get_violations(self, session_id: int | None = None, limit: int = 200) -> dict[str, Any]:
         try:
@@ -364,9 +509,14 @@ def _rules_dict(rs: RuleSet) -> dict[str, Any]:
         "close_grace_seconds": rs.close_grace_seconds,
         "block_incognito": rs.block_incognito,
         "app_whitelist": [r.process_name for r in rs.app_whitelist],
-        "site_count": len(rs.site_blocklist),
+        # Blocked in the current mode (Ujian: every category + added; Bebas: none).
+        "site_count": (0 if rs.mode is EnforcementMode.FREE
+                       else len(for_agents(rs).site_blocklist)),
         "site_patterns": [r.pattern for r in rs.site_blocklist],
-        "site_categories": sorted({r.category for r in rs.site_blocklist}),
+        "site_categories": sorted({r.category for r in rs.site_blocklist
+                                   if r.category != CUSTOM_SITE_CATEGORY}),
+        "custom_sites": [r.pattern for r in custom_sites(rs)],
+        "acts": rs.acts,
     }
 
 

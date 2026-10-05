@@ -5,6 +5,10 @@ of simulated agents that connect, heartbeat, stream a generated screen and
 occasionally trip a violation. Everything below the UI is the production code
 path — only the agents are fake.
 
+Simulated PCs pair the same way real ones do: on first run each one presents
+the dashboard's 6-digit code, receives its own token and keeps it next to the
+demo database, so later runs reconnect with that token alone.
+
     python scripts/demo_lab.py [--pcs 12]
 
 Press Ctrl+C to stop. Data goes to a temporary folder, not your real database.
@@ -80,16 +84,27 @@ def make_frame(label: str, state: str, width: int, height: int) -> bytes:
 
 
 class SimulatedPC:
-    def __init__(self, index: int, url: str, token: str) -> None:
+    def __init__(self, index: int, url: str, pairing_code: str, token_dir: Path) -> None:
         self.name = f"{ROOMS[index % len(ROOMS)]}-{index // len(ROOMS) + 1:02d}"
         self.user = STUDENTS[index % len(STUDENTS)]
         self.state = AgentState.ENFORCING
         self.stream = StreamMode.OFF
         self.url = url
+        agent_id = f"pc-{index:03d}"
+        self._token_file = token_dir / agent_id
+        token = None
+        with contextlib.suppress(OSError):
+            token = self._token_file.read_text(encoding="utf-8").strip() or None
         self.client = DashboardClient(
-            identity=AgentIdentity(agent_id=f"pc-{index:03d}", hostname=self.name,
+            identity=AgentIdentity(agent_id=agent_id, hostname=self.name,
                                    username=self.user, agent_version="0.1.0-demo"),
             token=token,
+            # Like the real agent: the code is only presented while unpaired.
+            pairing_code=None if token else pairing_code,
+            on_token_issued=self._store_token,
+            # One PC shows how a lost desktop worker looks on the dashboard.
+            desktop_access_provider=lambda: index != 6,
+            input_frozen_provider=lambda: self.frozen,
             state_provider=lambda: self.state,
             metrics_provider=lambda: (random.uniform(0.4, 1.9), random.uniform(38, 62),
                                       random.choice(["Google Chrome", "Visual Studio Code",
@@ -100,6 +115,11 @@ class SimulatedPC:
             backoff=BackoffPolicy(base_s=0.5, max_s=3.0, jitter_s=0.2),
         )
         self.ruleset: RuleSet | None = None
+        self.frozen = False
+
+    def _store_token(self, token: str) -> None:
+        self._token_file.parent.mkdir(parents=True, exist_ok=True)
+        self._token_file.write_text(token, encoding="utf-8")
 
     async def on_ruleset(self, rs: RuleSet) -> None:
         self.ruleset = rs
@@ -107,6 +127,9 @@ class SimulatedPC:
     async def on_command(self, cmd: CommandPayload) -> CommandResult:
         if cmd.command is CommandType.PAUSE:
             self.state = AgentState.PAUSED
+            self.frozen = False  # like the real agent: pausing releases a freeze
+        elif cmd.command is CommandType.FREEZE_INPUT:
+            self.frozen = cmd.text.strip().lower() != "off"
         elif cmd.command is CommandType.RESUME:
             self.state = AgentState.ENFORCING
         elif cmd.command is CommandType.SET_STREAM:
@@ -137,7 +160,7 @@ class SimulatedPC:
             await self.client.send_event(ScreenFramePayload(
                 agent_id=self.client.agent_id, hi_res=hi, width=w, height=h,
                 jpeg_b64=base64.b64encode(jpeg).decode(), captured_at=time.time()))
-            await asyncio.sleep(0.2 if hi else 1.0)
+            await asyncio.sleep(0.1 if hi else 0.2)
 
     async def _violation_loop(self) -> None:
         while True:
@@ -160,11 +183,11 @@ class SimulatedPC:
                 screenshot_b64=base64.b64encode(shot).decode()))
 
 
-def start_agents(count: int, url: str, token: str) -> threading.Thread:
+def start_agents(count: int, url: str, pairing_code: str, token_dir: Path) -> threading.Thread:
     def runner() -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        pcs = [SimulatedPC(i, url, token) for i in range(count)]
+        pcs = [SimulatedPC(i, url, pairing_code, token_dir) for i in range(count)]
         loop.run_until_complete(asyncio.gather(*(p.run() for p in pcs)))
 
     thread = threading.Thread(target=runner, name="demo-agents", daemon=True)
@@ -185,7 +208,6 @@ def main() -> int:
         ws_host="127.0.0.1",
         ws_port=8765,
         advertise_host="127.0.0.1",
-        token_hash_file=data_dir / "token_hash",
         default_dry_run=True,
     )
     from labsentinel_shared.logging_setup import setup_logging
@@ -194,8 +216,10 @@ def main() -> int:
 
     app = DashboardApp(config)
     app.start_background()
-    start_agents(args.pcs, f"ws://127.0.0.1:{config.ws_port}", app.token)
-    print(f"\n  {args.pcs} PC simulasi sedang terhubung...\n")
+    start_agents(
+        args.pcs, f"ws://127.0.0.1:{config.ws_port}", app.pairing.code, data_dir / "demo_tokens"
+    )
+    print(f"\n  {args.pcs} PC simulasi sedang dipasangkan dan terhubung...\n")
     try:
         app.run_ui(open_browser=not args.no_browser, keep_running=True)
     except KeyboardInterrupt:

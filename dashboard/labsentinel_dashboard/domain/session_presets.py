@@ -12,30 +12,30 @@ PROFILE_LABELS: dict[str, dict[str, str]] = {
         "label": "Ujian",
         "summary": "Paling ketat",
         "apps": "Hanya browser",
-        "sites": "Semua kategori diblokir",
+        "sites": "Semua kategori + situs tambahan diblokir",
         "description": (
-            "Hanya Chrome dan Edge yang boleh berjalan. Game, media sosial, "
-            "AI chatbot, situs jawaban, dan hiburan diblokir."
+            "Hanya Chrome dan Edge yang boleh berjalan; aplikasi untuk Praktikum "
+            "tidak berlaku. Semua kategori situs dan situs tambahan diblokir."
         ),
     },
     "lab": {
         "label": "Praktikum",
         "summary": "Sedang",
         "apps": "Browser + aplikasi mata kuliah",
-        "sites": "Game, media sosial, dan AI chatbot diblokir",
+        "sites": "Kategori pilihan + situs tambahan diblokir",
         "description": (
             "Browser ditambah aplikasi yang Anda izinkan, misalnya VS Code atau "
-            "XAMPP. Situs yang paling mengganggu tetap diblokir."
+            "XAMPP. Kategori situs yang Anda pilih dan situs tambahan diblokir."
         ),
     },
     "free": {
         "label": "Bebas",
-        "summary": "Tanpa pembatasan",
+        "summary": "Hanya memantau",
         "apps": "Semua aplikasi",
         "sites": "Tidak ada yang diblokir",
         "description": (
             "Tidak ada aplikasi yang ditutup dan tidak ada situs yang diblokir. "
-            "Pemantauan layar tetap berjalan agar Anda bisa mengawasi."
+            "Layar tetap terlihat, dan aplikasi di luar daftar tetap dicatat."
         ),
     },
 }

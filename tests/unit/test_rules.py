@@ -59,3 +59,28 @@ def test_ruleset_is_frozen() -> None:
     rs = RuleSet(revision=1)
     with pytest.raises(ValidationError):
         rs.revision = 2  # type: ignore[misc]
+
+
+def test_exam_allows_the_browsers_only() -> None:
+    """Ujian ignores the coursework apps saved for Praktikum."""
+    apps = (AppRule(process_name="code.exe"),)
+    lab = RuleSet(revision=1, mode=EnforcementMode.LAB, app_whitelist=apps)
+    exam = RuleSet(revision=1, mode=EnforcementMode.EXAM, app_whitelist=apps)
+    assert "code.exe" in lab.effective_whitelist_names()
+    assert exam.effective_whitelist_names() == DEFAULT_WHITELIST
+
+
+@pytest.mark.parametrize(
+    ("mode", "dry_run", "acts"),
+    [
+        (EnforcementMode.LAB, False, True),
+        (EnforcementMode.EXAM, False, True),
+        (EnforcementMode.LAB, True, False),  # test mode: record only
+        (EnforcementMode.FREE, False, False),  # Bebas: watch only, even when enforcing
+        (EnforcementMode.FREE, True, False),
+    ],
+)
+def test_only_lab_and_exam_outside_test_mode_act(
+    mode: EnforcementMode, dry_run: bool, acts: bool
+) -> None:
+    assert RuleSet(revision=1, mode=mode, dry_run=dry_run).acts is acts

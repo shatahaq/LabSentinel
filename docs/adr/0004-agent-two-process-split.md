@@ -1,6 +1,12 @@
 # ADR-0004: Agent dipecah menjadi service + helper sesi pengguna
 
-**Status:** Diterima · **Tanggal:** 2026-10-03
+**Status:** Diterima, dikoreksi oleh [ADR-0006](0006-desktop-access-from-the-service.md) · **Tanggal:** 2026-10-03
+
+> **Koreksi (2026-10-05):** versi awal ADR ini menaruh *screenshot* di service.
+> Dari session 0 hal itu tidak mungkin, begitu pula daftar jendela, judul jendela
+> aktif, `WM_CLOSE`, dan kunci layar. Semuanya kini dikerjakan proses ketiga,
+> *desktop worker*, yang dijalankan service sebagai SYSTEM di sesi pengguna.
+> Lihat ADR-0006.
 
 ## Konteks
 
@@ -21,7 +27,7 @@ Satu instalasi agent terdiri dari **dua proses**:
 
 | Proses | Berjalan sebagai | Tugas |
 |--------|------------------|-------|
-| **Service** | SYSTEM, session 0 | Penegakan whitelist, kebijakan registry, koneksi ke dashboard, screenshot |
+| **Service** | SYSTEM, session 0 | Penegakan whitelist, kebijakan registry, koneksi ke dashboard |
 | **Helper tray** | pengguna yang login, sesi desktop | Ikon tray + popup peringatan |
 
 Keduanya berkomunikasi lewat **TCP loopback** (`127.0.0.1`) dengan pesan JSON
@@ -53,7 +59,11 @@ lewat heartbeat sehingga dashboard dapat menandai PC tersebut.
   scheduled task; dipasang oleh installer di M7).
 - Helper bisa mati tanpa mematikan penegakan aturan — penegakan tetap jalan di
   service. Yang hilang hanya indikator, dan itu dilaporkan ke dashboard.
-- Watchdog (M6) menyalakan ulang helper bila hilang, demi menjaga transparansi.
+- Helper dijalankan lewat kunci `Run` HKLM di setiap login; service memulihkan
+  entri itu tiap kali start. Helper yang dimatikan peserta tidak dinyalakan ulang
+  otomatis di sesi yang sama — yang terjadi: dashboard menandai "indikator
+  disembunyikan". (Desktop worker, yang tidak bisa dimatikan peserta, ditangani
+  ADR-0006.)
 
 ## Alternatif yang ditolak
 

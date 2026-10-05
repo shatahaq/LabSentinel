@@ -8,7 +8,7 @@ from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
 from labsentinel_agent.enforce.matcher import WhitelistMatcher
 from labsentinel_agent.enforce.safety import SafetyPolicy
-from labsentinel_shared.enums import AgentState, ViolationKind
+from labsentinel_shared.enums import AgentState, EnforcementMode, ViolationKind
 from labsentinel_shared.rules import AppRule, RuleSet
 
 
@@ -185,3 +185,32 @@ async def test_screenshot_attached_as_evidence() -> None:
     )
     rec = await engine.handle_process(_game())
     assert rec is not None and rec.screenshot_jpeg == b"\xff\xd8\xff-fake-jpeg"
+
+
+@pytest.mark.asyncio
+async def test_free_mode_only_watches() -> None:
+    """Bebas: the app is recorded, but never closed, even with enforcing on."""
+    engine, records, ctrl, warner = _build(
+        ruleset=RuleSet(revision=1, mode=EnforcementMode.FREE, dry_run=False))
+    rec = await engine.handle_process(_game())
+    assert rec is not None and rec.dry_run is True and rec.acted is False
+    assert ctrl.graceful_calls == [] and ctrl.kill_calls == []
+    assert warner.warnings == []
+    assert len(records) == 1
+
+
+@pytest.mark.asyncio
+async def test_exam_closes_a_coursework_app() -> None:
+    """Ujian: an app allowed for Praktikum is closed like any other."""
+    code = ProcessInfo(pid=5001, name="code.exe", exe_path="C:/VSCode/code.exe",
+                       username="LAB\\student", session_id=1, has_visible_window=True,
+                       is_current_user=True)
+    apps = (AppRule(process_name="code.exe"),)
+    lab, _, lab_ctrl, _ = _build(ruleset=RuleSet(
+        revision=1, mode=EnforcementMode.LAB, dry_run=False, app_whitelist=apps))
+    assert await lab.handle_process(code) is None
+    exam, _, exam_ctrl, _ = _build(ruleset=RuleSet(
+        revision=1, mode=EnforcementMode.EXAM, dry_run=False, app_whitelist=apps))
+    rec = await exam.handle_process(code)
+    assert rec is not None and rec.acted is True
+    assert exam_ctrl.graceful_calls == [5001] and lab_ctrl.graceful_calls == []

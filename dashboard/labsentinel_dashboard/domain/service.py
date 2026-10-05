@@ -105,6 +105,11 @@ class AgentView:
     # False when the PC is monitored but the participant cannot see the tray
     # indicator (helper missing/killed) — a transparency problem to surface.
     indicator_visible: bool = True
+    # False when the agent cannot see the desktop (service without its desktop
+    # worker): no screen, no titles, apps are not closed. See ADR-0006.
+    desktop_access: bool = True
+    # True while the supervisor has frozen this PC's keyboard and mouse.
+    input_frozen: bool = False
 
     @property
     def status(self) -> ConnectionStatus:
@@ -174,6 +179,9 @@ class DashboardService:
         self._pending: dict[str, _Pending] = {}
         self._last_notified: dict[tuple[str, str], float] = {}
         self._latest_frames: dict[str, ScreenFramePayload] = {}
+        # Each frame gets the next number, so the UI asks only for what is new.
+        self._frame_counter = 0
+        self._frame_seq: dict[str, int] = {}
         self._bg_tasks: set[asyncio.Task[Any]] = set()
         self._grid_open = False
         self._focused_agent: str | None = None
@@ -213,6 +221,22 @@ class DashboardService:
 
     def latest_frame(self, agent_id: str) -> ScreenFramePayload | None:
         return self._latest_frames.get(agent_id)
+
+    def frames_newer(
+        self, seen: dict[str, int]
+    ) -> list[tuple[str, int, ScreenFramePayload]]:
+        """Latest frames of the PCs in ``seen`` newer than the number given.
+
+        ``seen`` maps agent id -> the frame number the viewer already shows
+        (0 for none). One call serves the whole grid, live.
+        """
+        out = []
+        for agent_id, last in seen.items():
+            seq = self._frame_seq.get(agent_id, 0)
+            frame = self._latest_frames.get(agent_id)
+            if frame is not None and seq > last:
+                out.append((agent_id, seq, frame))
+        return out
 
     # ------------------------------------------------------------ ServerEvents
     async def on_agent_connected(self, session: AgentSessionLike) -> None:
@@ -260,6 +284,7 @@ class DashboardService:
         self._fail_pending_for(agent_id)
         self._stream_modes.pop(agent_id, None)
         self._latest_frames.pop(agent_id, None)  # don't show a stale screen
+        self._frame_seq.pop(agent_id, None)
         self._publish_agent(view)
 
     async def on_heartbeat(self, agent_id: str, hb: HeartbeatPayload) -> None:
@@ -276,6 +301,11 @@ class DashboardService:
         view.mem_mb = hb.mem_mb
         view.active_window_title = hb.active_window_title
         view.indicator_visible = hb.indicator_visible
+        view.desktop_access = hb.desktop_access
+        view.input_frozen = hb.input_frozen
+        if hb.username is not None and hb.username != view.username:
+            view.username = hb.username  # someone signed in or out at that PC
+            self._db.set_agent_username(agent_id, hb.username)
         if throttle_db:
             self._db.touch_agent(agent_id, now)
         self._publish_agent(view)
@@ -326,6 +356,8 @@ class DashboardService:
 
     async def on_screen_frame(self, agent_id: str, f: ScreenFramePayload) -> None:
         self._latest_frames[agent_id] = f
+        self._frame_counter += 1
+        self._frame_seq[agent_id] = self._frame_counter
         self._bus.publish(Topic.FRAME, {"agent_id": agent_id, "hi_res": f.hi_res})
 
     async def on_ack(self, agent_id: str, ack: AckPayload) -> None:
@@ -375,6 +407,29 @@ class DashboardService:
             CommandPayload(command=CommandType.LOCK_SCREEN, issued_by=actor),
             actor=actor,
         )
+
+    async def freeze_input(
+        self, agent_ids: Iterable[str] | None, on: bool, *, actor: str
+    ) -> CommandReport:
+        """Freeze or release the keyboard and mouse on the given PCs.
+
+        A PC that confirmed (ACK) has carried it out, so its state is shown at
+        once rather than after its next heartbeat.
+        """
+        report = await self._dispatch(
+            self._resolve(agent_ids),
+            CommandPayload(
+                command=CommandType.FREEZE_INPUT, text="on" if on else "off", issued_by=actor
+            ),
+            actor=actor,
+            details={"on": on},
+        )
+        for agent_id in report.succeeded:
+            view = self._views.get(agent_id)
+            if view is not None and view.input_frozen != on:
+                view.input_frozen = on
+                self._publish_agent(view)
+        return report
 
     async def broadcast(
         self, agent_ids: Iterable[str] | None, text: str, *, actor: str

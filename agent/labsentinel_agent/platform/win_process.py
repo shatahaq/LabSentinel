@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
+from collections.abc import Callable
 
 import psutil
 
@@ -21,10 +23,16 @@ log = logging.getLogger("labsentinel.agent.platform")
 _IS_WINDOWS = sys.platform == "win32"
 
 if _IS_WINDOWS:
+    import win32api
     import win32con
     import win32gui
     import win32process
+    import win32security
     import win32ts
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION_CLASS = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
 
 
 def _active_console_session() -> int:
@@ -45,8 +53,61 @@ def _session_of(pid: int) -> int | None:
         return None
 
 
+def is_elevated(pid: int) -> bool:
+    """True when ``pid`` runs with administrator rights (an elevated token).
+
+    False when it cannot be told (process gone, access denied): the other
+    checks still decide, so an unknown never protects a participant's app.
+    """
+    if not _IS_WINDOWS:
+        return False
+    try:
+        handle = win32api.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        try:
+            token = win32security.OpenProcessToken(handle, TOKEN_QUERY)
+            try:
+                return bool(win32security.GetTokenInformation(token, TOKEN_ELEVATION_CLASS))
+            finally:
+                win32api.CloseHandle(token)
+        finally:
+            win32api.CloseHandle(handle)
+    except Exception:
+        return False
+
+
+# When the agent runs as a service (session 0), it cannot see the user's
+# windows itself; the desktop worker in the user's session supplies them.
+WindowIndexProvider = Callable[[], "dict[int, str] | None"]
+_window_index_provider: WindowIndexProvider | None = None
+
+
+def set_window_index_provider(provider: WindowIndexProvider | None) -> None:
+    global _window_index_provider
+    _window_index_provider = provider
+
+
 def build_window_index() -> dict[int, str]:
-    """Map pid -> a representative visible window title (one per pid)."""
+    """Map pid -> a representative visible window title (one per pid).
+
+    Asks the desktop worker when one is connected (service mode), otherwise
+    enumerates this session's windows directly (console / development).
+    """
+    provider = _window_index_provider
+    if provider is not None:
+        supplied = provider()
+        if supplied is not None:
+            return supplied
+    return local_window_index()
+
+
+def current_session_id() -> int:
+    """The Windows session this process runs in (-1 off Windows)."""
+    session = _session_of(os.getpid())
+    return -1 if session is None else session
+
+
+def local_window_index() -> dict[int, str]:
+    """Visible top-level windows of *this* session, via EnumWindows."""
     if not _IS_WINDOWS:
         return {}
     index: dict[int, str] = {}
@@ -136,18 +197,57 @@ def _make_info(
         has_visible_window=pid in window_index,
         window_title=window_index.get(pid, ""),
         is_current_user=is_current,
+        # Only asked for the participant's own processes: the rest are out of
+        # scope anyway, and this saves a token query per system process.
+        elevated=is_current and is_elevated(pid),
     )
 
 
+def post_wm_close(pid: int) -> bool:
+    """Ask every visible window of ``pid`` in this session to close.
+
+    Returns True if at least one window was asked. Only meaningful inside the
+    user's session: from a service in session 0 there are no such windows,
+    which is why the desktop worker does this on the service's behalf.
+    """
+    if not _IS_WINDOWS:
+        return False
+    posted = 0
+
+    def _cb(hwnd: int, _: object) -> bool:
+        nonlocal posted
+        try:
+            _, wpid = win32process.GetWindowThreadProcessId(hwnd)
+            if wpid == pid and win32gui.IsWindowVisible(hwnd):
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+                posted += 1
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumWindows(_cb, None)
+    except Exception:
+        log.debug("EnumWindows during close failed", exc_info=True)
+    return posted > 0
+
+
 class WinProcessController:
-    """Graceful close via WM_CLOSE, hard kill via psutil as a fallback."""
+    """Graceful close via WM_CLOSE, hard kill via psutil as a fallback.
+
+    ``window_closer`` delivers the WM_CLOSE: by default in this session, or
+    through the desktop worker when the agent runs as a service.
+    """
+
+    def __init__(self, window_closer: Callable[[int], bool | None] | None = None) -> None:
+        self._close_windows = window_closer or post_wm_close
 
     def is_running(self, pid: int) -> bool:
         return bool(psutil.pid_exists(pid))
 
     async def graceful_close(self, pid: int, timeout_s: float) -> bool:
         if _IS_WINDOWS:
-            self._post_wm_close(pid)
+            await asyncio.to_thread(self._close_windows, pid)
         else:  # dev fallback: ask psutil to terminate
             await self._terminate(pid)
         return await self._wait_gone(pid, timeout_s)
@@ -162,21 +262,6 @@ class WinProcessController:
             log.error("access denied killing pid=%d", pid)
             return False
         return await self._wait_gone(pid, 2.0)
-
-    def _post_wm_close(self, pid: int) -> None:
-        def _cb(hwnd: int, _: object) -> bool:
-            try:
-                _, wpid = win32process.GetWindowThreadProcessId(hwnd)
-                if wpid == pid and win32gui.IsWindowVisible(hwnd):
-                    win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
-            except Exception:
-                pass
-            return True
-
-        try:
-            win32gui.EnumWindows(_cb, None)
-        except Exception:
-            log.debug("EnumWindows during close failed", exc_info=True)
 
     async def _terminate(self, pid: int) -> None:
         try:

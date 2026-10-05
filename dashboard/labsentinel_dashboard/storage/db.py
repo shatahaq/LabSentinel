@@ -225,6 +225,10 @@ class Database:
         with self._tx() as c:
             c.execute("UPDATE agents SET last_seen = ? WHERE agent_id = ?", (ts, agent_id))
 
+    def set_agent_username(self, agent_id: str, username: str) -> None:
+        with self._tx() as c:
+            c.execute("UPDATE agents SET username = ? WHERE agent_id = ?", (username, agent_id))
+
     def set_agent_group(self, agent_id: str, group_name: str) -> None:
         with self._tx() as c:
             c.execute(
@@ -409,6 +413,25 @@ class Database:
 
     def list_audit(self, *, limit: int = 500) -> list[AuditRow]:
         rows = self._query("SELECT * FROM audit_log ORDER BY ts DESC, id DESC LIMIT ?", (limit,))
+        return [
+            AuditRow(
+                id=r["id"],
+                ts=r["ts"],
+                actor=r["actor"],
+                action=r["action"],
+                target=r["target"],
+                details=json.loads(r["details"]),
+                result=r["result"],
+            )
+            for r in rows
+        ]
+
+    def list_audit_between(self, start: float, end: float) -> list[AuditRow]:
+        """Audit entries in ``[start, end]``, oldest first (for session reports)."""
+        rows = self._query(
+            "SELECT * FROM audit_log WHERE ts >= ? AND ts <= ? ORDER BY ts ASC, id ASC",
+            (start, end),
+        )
         return [
             AuditRow(
                 id=r["id"],

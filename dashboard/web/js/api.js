@@ -29,11 +29,13 @@
     getOverview: () => call("get_overview"),
     getAgents: () => call("get_agents"),
     getFrame: (id) => call("get_frame", id),
+    getFrames: (seen) => call("get_frames", seen),
     setViewing: (gridOpen, focused) => call("set_viewing", gridOpen, focused || null),
 
     pause: (ids) => call("pause", ids || null),
     resume: (ids) => call("resume", ids || null),
     lockScreens: (ids) => call("lock_screens", ids || null),
+    freezeInput: (on, ids) => call("freeze_input", on, ids || null),
     broadcast: (text, ids) => call("broadcast", text, ids || null),
 
     getRules: () => call("get_rules"),
@@ -41,6 +43,7 @@
     setDryRun: (on) => call("set_dry_run", on),
     setWhitelist: (names) => call("set_whitelist", names),
     setSiteCategories: (keys) => call("set_site_categories", keys),
+    setCustomSites: (sites) => call("set_custom_sites", sites),
     setCloseGrace: (secs) => call("set_close_grace", secs),
 
     startSession: (name, mode) => call("start_session", name, mode),
@@ -50,5 +53,10 @@
     getViolations: (sessionId, limit) => call("get_violations", sessionId || null, limit || 200),
     getScreenshot: (id) => call("get_screenshot", id),
     getAudit: (limit) => call("get_audit", limit || 300),
+    exportReport: (sessionId, fmt) => call("export_report", sessionId, fmt),
+
+    getPairing: () => call("get_pairing"),
+    rotatePairingCode: () => call("rotate_pairing_code"),
+    setPairingOpen: (open) => call("set_pairing_open", !!open),
   };
 })(window);

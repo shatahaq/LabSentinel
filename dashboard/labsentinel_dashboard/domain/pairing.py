@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from labsentinel_dashboard.storage.db import Database
@@ -58,11 +59,12 @@ class PairingService:
         db: Database,
         *,
         limiter: RateLimiter | None = None,
-        clock: object = time.time,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self._db = db
         self._lock = threading.Lock()
         self._limiter = limiter or RateLimiter()
+        self._clock = clock
         code = db.get_setting(SETTING_CODE)
         if not code:
             code = generate_pairing_code()
@@ -137,8 +139,9 @@ class PairingService:
 
     def pair(self, *, agent_id: str, hostname: str, code: str | None, source: str) -> PairingResult:
         """Exchange a pairing code for this agent's own long-lived token."""
-        if self._limiter.is_locked(source):
-            wait = int(self._limiter.retry_after(source))
+        now = self._clock()
+        if self._limiter.is_locked(source, now=now):
+            wait = int(self._limiter.retry_after(source, now=now))
             log.warning("pairing from %s is locked out for %ds", source, wait)
             return PairingResult(False, reason=f"terlalu banyak percobaan, tunggu {wait} detik")
 
@@ -155,7 +158,7 @@ class PairingService:
             return PairingResult(False, reason="pendaftaran PC baru sedang ditutup")
 
         if not code_matches(code, expected):
-            locked = self._limiter.record_failure(source)
+            locked = self._limiter.record_failure(source, now=now)
             log.warning(
                 "wrong pairing code from %s for %s%s",
                 source, hostname, " (now locked out)" if locked else "",

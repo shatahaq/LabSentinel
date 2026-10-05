@@ -106,10 +106,14 @@
     for (const ev of res.events) {
       if (ev.topic === "violation.new") {
         const v = ev.data;
-        if (v.notify) {
+        if (v.kind === "agent_tamper") {
+          // Always shown, never deduplicated away: it explains a gap in
+          // monitoring (killed, service stopped, or the PC lost power).
+          toast(`${v.hostname}: agent dihentikan tidak wajar`, v.detail, "error");
+        } else if (v.notify) {
           toast(
             `${v.hostname}: ${v.subject}`,
-            v.dry_run ? "Tercatat (mode uji coba)" : global.U.violationLabel(v.kind),
+            v.dry_run ? "Tercatat (tidak ditindak)" : global.U.violationLabel(v.kind),
             v.dry_run ? "warn" : "error"
           );
         }
@@ -150,8 +154,9 @@
         body.innerHTML = `
           <ol style="padding-left:1.1rem;display:flex;flex-direction:column;gap:var(--s-4);margin:0">
             <li><strong>PC terhubung sendiri.</strong>
-              Pasang agent di PC peserta; agent menemukan dashboard ini lewat jaringan lab.
-              Alamat IP tidak perlu diatur.</li>
+              Pasang agent di PC peserta dengan kode pemasangan 6 digit (ada di halaman
+              Aturan); agent menemukan dashboard ini lewat jaringan lab. Alamat IP tidak
+              perlu diatur.</li>
             <li><strong>Mulai dari mode uji coba.</strong>
               Saat pertama dipasang, pelanggaran hanya dicatat dan tidak ada aplikasi yang
               ditutup. Coba dulu aturannya, baru tegakkan.</li>
@@ -239,7 +244,10 @@
 
     global.addEventListener("hashchange", () => {
       const page = location.hash.replace("#", "") || "beranda";
-      if (page !== currentPage) goto(page, { fromHash: true });
+      if (page === currentPage) return;
+      // Back/forward while a PC's detail is open: leave the dialog with the page.
+      if (!document.getElementById("scrim").hidden) C.closeDialog();
+      goto(page, { fromHash: true });
     });
 
     // Stop asking agents for frames while the window is hidden.

@@ -51,6 +51,20 @@ def test_system_owned_never_evaluable(account: str) -> None:
     assert SafetyPolicy().evaluate(proc).verdict is SafetyVerdict.PROTECTED
 
 
+def test_what_an_administrator_started_is_never_evaluable() -> None:
+    """The installer, the uninstaller, admin tools: no participant can start them."""
+    proc = _user_app(name="labsentinel-setup.exe", elevated=True)
+    decision = SafetyPolicy().evaluate(proc)
+    assert decision.verdict is SafetyVerdict.PROTECTED
+    assert "administrator" in decision.reason
+
+
+def test_a_renamed_game_is_still_evaluable() -> None:
+    """Protection follows elevation, not the name a participant can choose."""
+    proc = _user_app(name="labsentinel-setup.exe", elevated=False)
+    assert SafetyPolicy().evaluate(proc).verdict is SafetyVerdict.EVALUABLE
+
+
 def test_agents_own_pids_protected() -> None:
     policy = SafetyPolicy(own_pids=frozenset({5000}))
     assert policy.evaluate(_user_app(pid=5000)).verdict is SafetyVerdict.PROTECTED

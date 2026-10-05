@@ -17,12 +17,12 @@ dependencies = [
 [project.optional-dependencies]
 dashboard = [
     "eel>=0.16",
-    "websockets>=12.0",
+    "websockets>=15.0",  # proxy=None (connect directly on the LAN)
     "reportlab>=4.0",
     "openpyxl>=3.1",
 ]
 agent = [
-    "websockets>=12.0",
+    "websockets>=15.0",  # proxy=None (connect directly on the LAN)
     "psutil>=5.9",
     "mss>=9.0",
     "Pillow>=10.0",
@@ -39,8 +39,18 @@ dev = [
     "black>=24.0",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    "pypdf>=4.0",  # reads generated report PDFs back in tests
 ]
 packaging = ["pyinstaller>=6.0"]
+
+[project.scripts]
+labsentinel-agent = "labsentinel_agent.app:main"
+labsentinel-service = "labsentinel_agent.service:main"
+labsentinel-tray = "labsentinel_agent.tray.__main__:main"
+labsentinel-dashboard = "labsentinel_dashboard.app:main"
+
+[project.gui-scripts]
+labsentinel-setup = "labsentinel_agent.gui.setup_window:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

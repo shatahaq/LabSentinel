@@ -82,7 +82,7 @@
     app_closed: "Aplikasi ditutup",
     impersonation: "Aplikasi menyamar",
     site_title: "Dugaan situs terlarang",
-    agent_tamper: "Agent dimatikan paksa",
+    agent_tamper: "Agent dihentikan tidak wajar",
   };
 
   function violationLabel(kind) { return VIOLATION_LABEL[kind] || kind; }

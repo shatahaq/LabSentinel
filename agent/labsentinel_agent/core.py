@@ -37,6 +37,7 @@ class RuntimeState:
     state: AgentState = AgentState.ENFORCING
     ruleset: RuleSet | None = None
     dry_run_override: bool | None = None
+    input_frozen: bool = False  # supervisor froze this PC's keyboard and mouse
 
     def effective_ruleset(self) -> RuleSet | None:
         if self.ruleset is None:
@@ -48,6 +49,7 @@ class RuntimeState:
 
 # Injected side-effect hooks (Windows-backed in production, fakes in tests).
 LockFn = Callable[[], bool]
+FreezeFn = Callable[[bool], bool]
 NotifyFn = Callable[[str, str], None]
 Snapshot = Callable[[], list[ProcessInfo]]
 # Pushes (state, connected) to the participant's on-screen indicator.
@@ -86,6 +88,7 @@ class AgentCore:
         engine: EnforcementEngine,
         detector: _Detector,
         lock_fn: LockFn,
+        freeze_fn: FreezeFn | None = None,
         notify_fn: NotifyFn,
         status_sink: StatusSink | None = None,
         policy: PolicyManager | None = None,
@@ -96,6 +99,7 @@ class AgentCore:
         self._engine = engine
         self._detector = detector
         self._lock = lock_fn
+        self._freeze = freeze_fn
         self._notify = notify_fn
         self._status_sink = status_sink
         self._policy = policy
@@ -120,7 +124,7 @@ class AgentCore:
     def sync_browser_policy(self) -> None:
         """Make the browser policy match the current state and ruleset.
 
-        Paused (or dry-run) means nothing is blocked: the policy is removed and
+        Paused, test mode or Bebas means nothing is blocked: the policy is removed and
         the institution's own policy restored. Enforcing re-applies it.
         """
         if self._policy is None:
@@ -129,7 +133,7 @@ class AgentCore:
         should_block = (
             self._rt.state is AgentState.ENFORCING
             and ruleset is not None
-            and not ruleset.dry_run
+            and ruleset.acts
             and bool(ruleset.site_blocklist)
         )
         try:
@@ -147,6 +151,9 @@ class AgentCore:
         log.info("command %s from %s", cmd.command, cmd.issued_by or "?")
         if cmd.command is CommandType.PAUSE:
             self._rt.state = AgentState.PAUSED
+            # Pausing hands the PC back to the participant, so a manual freeze
+            # must not outlive it.
+            self._set_frozen(False)
             # The participant must see the paused state immediately.
             self.publish_status()
             # Paused means nothing is blocked: restore the original policy.
@@ -169,6 +176,13 @@ class AgentCore:
         if cmd.command is CommandType.LOCK_SCREEN:
             ok = self._lock()
             return CommandResult(resulting_state=self._rt.state, ok=ok, message="lock")
+        if cmd.command is CommandType.FREEZE_INPUT:
+            on = _parse_bool(cmd.text, default=True)
+            ok = self._set_frozen(on)
+            self.publish_status()
+            return CommandResult(
+                resulting_state=self._rt.state, ok=ok, message=f"frozen={on}"
+            )
         if cmd.command is CommandType.BROADCAST_MESSAGE:
             self._notify("Pesan dari pengawas", cmd.text)
             return CommandResult(resulting_state=self._rt.state, message="broadcast shown")
@@ -190,6 +204,49 @@ class AgentCore:
     def state(self) -> AgentState:
         return self._rt.state
 
+    def input_frozen(self) -> bool:
+        return self._rt.input_frozen
+
+    def _set_frozen(self, on: bool) -> bool:
+        """Freeze or release the keyboard and mouse; remember the state.
+
+        Returns whether the desktop carried it out. The remembered state only
+        follows a success, so a failed freeze is not reported as frozen.
+        """
+        if self._freeze is None:
+            return False
+        if on == self._rt.input_frozen:
+            return True
+        ok = False
+        try:
+            ok = self._freeze(on)
+        except Exception:
+            log.warning("freeze_input(%s) failed", on, exc_info=True)
+        if ok:
+            self._rt.input_frozen = on
+        return ok
+
+    def release_input_freeze(self) -> None:
+        """Best-effort release, for shutdown so a participant is never stranded."""
+        if self._rt.input_frozen:
+            self._set_frozen(False)
+
+    def reassert_input_freeze(self) -> None:
+        """Re-apply an active freeze, e.g. after the desktop worker restarted.
+
+        Windows drops ``BlockInput`` when the worker that held it exits, so a
+        PC meant to stay frozen would quietly come free. When a fresh worker is
+        available, hold it again; if that fails, stop claiming the PC is frozen.
+        """
+        if not self._rt.input_frozen or self._freeze is None:
+            return
+        try:
+            if not self._freeze(True):
+                self._rt.input_frozen = False
+        except Exception:
+            log.warning("could not re-apply the input freeze", exc_info=True)
+            self._rt.input_frozen = False
+
     # -- participant-visible status ----------------------------------------
     def set_connected(self, connected: bool) -> None:
         """Record dashboard connectivity and refresh the on-screen indicator."""
@@ -207,9 +264,10 @@ class AgentCore:
             log.warning("could not update participant indicator", exc_info=True)
 
     # -- violation emission -------------------------------------------------
-    async def emit_violation(self, rec: ViolationRecord) -> None:
+    async def emit_violation(self, rec: ViolationRecord) -> bool:
+        """Send a violation to the dashboard. Returns False if it was not sent."""
         if self._client is None:
-            return
+            return False
         payload = ViolationPayload(
             agent_id=self._client.agent_id,
             kind=rec.kind,
@@ -227,6 +285,7 @@ class AgentCore:
         sent = await self._client.send_event(payload)
         if not sent:
             log.info("violation %s not sent (offline); kept enforcing locally", rec.subject)
+        return sent
 
     # -- sweeps -------------------------------------------------------------
     async def sweep_running(self) -> None:

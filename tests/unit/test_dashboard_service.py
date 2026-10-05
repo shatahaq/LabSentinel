@@ -44,6 +44,7 @@ class FakeSession:
         self.behaviour = behaviour
         self.state = AgentState.ENFORCING
         self.commands: list[CommandType] = []  # admin commands only
+        self.sent_commands: list[CommandPayload] = []
         self.stream_modes: list[str] = []
         self.rulesets: list[RuleSet] = []
 
@@ -55,6 +56,7 @@ class FakeSession:
             return f"{self.agent_id}-stream-{len(self.stream_modes)}"
         cid = f"{self.agent_id}-{len(self.commands)}"
         self.commands.append(cmd.command)
+        self.sent_commands.append(cmd)
         if self.behaviour != "silent":
             if cmd.command is CommandType.PAUSE:
                 self.state = AgentState.PAUSED
@@ -143,6 +145,76 @@ async def test_status_reflects_agent_reported_state(tmp_path: Path) -> None:
     await svc.on_heartbeat("pc-01", HeartbeatPayload(
         agent_id="pc-01", state=AgentState.PAUSED, rule_revision=1))
     assert svc.agent("pc-01").status is ConnectionStatus.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_lost_desktop_access_is_shown_to_the_supervisor(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    assert svc.agent("pc-01").to_dict()["desktop_access"] is True
+    await svc.on_heartbeat("pc-01", HeartbeatPayload(
+        agent_id="pc-01", state=AgentState.ENFORCING, rule_revision=1, desktop_access=False))
+    assert svc.agent("pc-01").to_dict()["desktop_access"] is False
+    # Agents built before this field existed report nothing: treated as fine.
+    await svc.on_heartbeat("pc-01", HeartbeatPayload(
+        agent_id="pc-01", state=AgentState.ENFORCING, rule_revision=1))
+    assert svc.agent("pc-01").desktop_access is True
+
+
+@pytest.mark.asyncio
+async def test_input_frozen_is_shown_to_the_supervisor(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    assert svc.agent("pc-01").to_dict()["input_frozen"] is False
+    await svc.on_heartbeat("pc-01", HeartbeatPayload(
+        agent_id="pc-01", state=AgentState.ENFORCING, rule_revision=1, input_frozen=True))
+    assert svc.agent("pc-01").to_dict()["input_frozen"] is True
+
+
+@pytest.mark.asyncio
+async def test_freeze_input_sends_the_command(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    session = await _connect(svc, link, "pc-01")
+    report = await svc.freeze_input(["pc-01"], True, actor="dosen")
+    assert report.succeeded == ["pc-01"]
+    assert session.commands == [CommandType.FREEZE_INPUT]
+    sent = session.sent_commands[-1]
+    assert sent.command is CommandType.FREEZE_INPUT and sent.text == "on"
+    await svc.freeze_input(["pc-01"], False, actor="dosen")
+    assert session.sent_commands[-1].text == "off"
+
+
+@pytest.mark.asyncio
+async def test_confirmed_freeze_is_shown_before_the_next_heartbeat(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    await _connect(svc, link, "pc-02", behaviour="fail")
+    report = await svc.freeze_input(["pc-01", "pc-02"], True, actor="dosen")
+    assert report.succeeded == ["pc-01"]
+    assert svc.agent("pc-01").input_frozen is True
+    assert svc.agent("pc-02").input_frozen is False  # it said no: not shown frozen
+    await svc.freeze_input(["pc-01"], False, actor="dosen")
+    assert svc.agent("pc-01").input_frozen is False
+
+
+@pytest.mark.asyncio
+async def test_signed_in_participant_replaces_the_service_account(tmp_path: Path) -> None:
+    db, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")  # HELLO from a service: no one signed in yet
+
+    def hb(username: str | None) -> HeartbeatPayload:
+        return HeartbeatPayload(agent_id="pc-01", state=AgentState.ENFORCING,
+                                rule_revision=1, username=username)
+
+    await svc.on_heartbeat("pc-01", hb("budi"))
+    assert svc.agent("pc-01").username == "budi"
+    assert db.list_agents()[0]["username"] == "budi"
+    await svc.on_heartbeat("pc-01", hb(""))  # signed out
+    assert svc.agent("pc-01").username == ""
+    await svc.on_heartbeat("pc-01", hb("sari"))
+    await svc.on_heartbeat("pc-01", hb(None))  # an older agent says nothing: keep it
+    assert svc.agent("pc-01").username == "sari"
+    assert db.list_agents()[0]["username"] == "sari"
 
 
 @pytest.mark.asyncio

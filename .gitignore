@@ -25,6 +25,7 @@ data/
 logs/
 *.log
 screenshots/
+!docs/screenshots/
 run/
 *.labsentinel-backup.json
 

@@ -91,6 +91,9 @@ class DashboardClient:
         on_command: CommandHandler,
         cached_revision_provider: Callable[[], int] = lambda: -1,
         indicator_visible_provider: Callable[[], bool] = lambda: True,
+        desktop_access_provider: Callable[[], bool] = lambda: True,
+        username_provider: Callable[[], str | None] = lambda: None,
+        input_frozen_provider: Callable[[], bool] = lambda: False,
         heartbeat_interval_s: float = 5.0,
         backoff: BackoffPolicy | None = None,
     ) -> None:
@@ -104,11 +107,16 @@ class DashboardClient:
         self._on_command = on_command
         self._cached_rev = cached_revision_provider
         self._indicator_visible = indicator_visible_provider
+        self._desktop_access = desktop_access_provider
+        self._username = username_provider
+        self._input_frozen = input_frozen_provider
         self._hb_interval = heartbeat_interval_s
         self._backoff = backoff or BackoffPolicy()
         self._stop = asyncio.Event()
         self._conn: websockets.ClientConnection | None = None
         self.connected = asyncio.Event()
+        # Set when the dashboard refused our pairing code; run() then returns.
+        self.pairing_rejected: str | None = None
 
     @property
     def agent_id(self) -> str:
@@ -143,7 +151,11 @@ class DashboardClient:
             await self._sleep(delay)
 
     async def _session(self, url: str) -> None:
-        async with websockets.connect(url, max_size=32 * 1024 * 1024) as conn:
+        # proxy=None: the dashboard is always on the lab LAN. websockets >= 15
+        # otherwise follows the system proxy (env vars, and on Windows the
+        # Internet Options setting many schools configure), which would route
+        # a LAN connection out through the school proxy and fail.
+        async with websockets.connect(url, max_size=32 * 1024 * 1024, proxy=None) as conn:
             self._conn = conn
             await self._send(
                 conn,
@@ -195,9 +207,17 @@ class DashboardClient:
             return None
         env = decode(raw)
         if isinstance(env.payload, RejectPayload):
-            log.error("dashboard rejected agent: %s", env.payload.reason)
-            # Rejection is terminal for this URL; raise to trigger backoff.
-            raise ProtocolError(f"rejected: {env.payload.reason}")
+            reason = env.payload.reason
+            log.error("dashboard rejected agent: %s", reason)
+            if self._token is None and self._pairing_code:
+                # A refused pairing code does not become right by retrying, and
+                # every retry counts as a guess toward the dashboard's lockout
+                # of this PC. Stop and let the person installing see why.
+                self.pairing_rejected = reason
+                self._stop.set()
+            # Otherwise (e.g. a revoked token) keep retrying with backoff: the
+            # admin may re-pair or restore the dashboard database.
+            raise ProtocolError(f"rejected: {reason}")
         if isinstance(env.payload, WelcomePayload):
             return env.payload
         return None
@@ -241,6 +261,9 @@ class DashboardClient:
                         mem_mb=mem,
                         active_window_title=title,
                         indicator_visible=self._indicator_visible(),
+                        desktop_access=self._desktop_access(),
+                        username=self._username(),
+                        input_frozen=self._input_frozen(),
                     ),
                 )
             await self._sleep(self._hb_interval)

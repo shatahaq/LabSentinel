@@ -1,8 +1,11 @@
 """Adaptive screen streaming.
 
 Three levels, set by the dashboard: ``OFF`` (nobody is watching), ``GRID``
-(small thumbnail, ~1 fps) and ``HIRES`` (larger, higher fps, while an admin has
-this PC open full-screen).
+(small live thumbnail, ~5 fps, so a supervisor watches the whole lab at once)
+and ``HIRES`` (larger and smoother, while an admin has this PC open).
+
+A screen that has not changed is not sent again (only a keep-alive frame every
+few seconds), so a lab of quiet screens costs almost nothing on the network.
 
 Privacy and cost both demand that the agent **captures nothing at all** unless
 someone is actually looking: when monitoring is paused, or no admin is viewing,
@@ -37,12 +40,15 @@ class StreamProfile:
 
 
 DEFAULT_PROFILES: dict[StreamMode, StreamProfile] = {
-    StreamMode.GRID: StreamProfile(fps=1.0, max_width=320, quality=40),
-    StreamMode.HIRES: StreamProfile(fps=5.0, max_width=1280, quality=70),
+    StreamMode.GRID: StreamProfile(fps=5.0, max_width=400, quality=45),
+    StreamMode.HIRES: StreamProfile(fps=10.0, max_width=1280, quality=65),
 }
 
 # How long the loop naps while idle before re-checking whether to stream.
 IDLE_POLL_S = 0.25
+
+# An unchanged screen is re-sent this often, so the dashboard knows it is live.
+UNCHANGED_RESEND_S = 3.0
 
 # Sender: (jpeg, width, height, hi_res) -> delivered?
 FrameSender = Callable[[bytes, int, int, bool], Awaitable[bool]]
@@ -71,8 +77,11 @@ class ScreenStreamer:
         self._run_capture = run_capture or _default_run_capture
         self._mode = StreamMode.OFF
         self._stop = False
+        self._last_frame: bytes | None = None  # last delivered frame, this mode
+        self._last_sent_at = 0.0
         self.frames_sent = 0
         self.frames_dropped = 0
+        self.frames_unchanged = 0
 
     @property
     def mode(self) -> StreamMode:
@@ -82,6 +91,7 @@ class ScreenStreamer:
         if mode is not self._mode:
             log.info("stream mode: %s -> %s", self._mode, mode)
             self._mode = mode
+            self._last_frame = None  # a new view always gets a fresh frame
 
     def stop(self) -> None:
         self._stop = True
@@ -105,12 +115,16 @@ class ScreenStreamer:
                 continue
 
             started = self._clock()
-            await self._capture_and_send(profile, hi_res=self._mode is StreamMode.HIRES)
+            await self._capture_and_send(
+                profile, hi_res=self._mode is StreamMode.HIRES, now=started
+            )
             # Keep the requested frame rate, accounting for capture time.
             elapsed = self._clock() - started
             await self._sleep(max(0.0, (1.0 / profile.fps) - elapsed))
 
-    async def _capture_and_send(self, profile: StreamProfile, *, hi_res: bool) -> None:
+    async def _capture_and_send(
+        self, profile: StreamProfile, *, hi_res: bool, now: float | None = None
+    ) -> None:
         def _grab() -> bytes | None:
             return self._capturer.capture_jpeg(
                 max_width=profile.max_width, quality=profile.quality
@@ -128,6 +142,13 @@ class ScreenStreamer:
         if not self.should_capture():
             return
 
+        # Same screen as last time: skip it, but keep the view alive.
+        if now is None:
+            now = self._clock()
+        if jpeg == self._last_frame and now - self._last_sent_at < UNCHANGED_RESEND_S:
+            self.frames_unchanged += 1
+            return
+
         width, height = _jpeg_size(jpeg, fallback_width=profile.max_width)
         try:
             delivered = await self._send(jpeg, width, height, hi_res)
@@ -136,6 +157,8 @@ class ScreenStreamer:
             delivered = False
         if delivered:
             self.frames_sent += 1
+            self._last_frame = jpeg
+            self._last_sent_at = now
         else:
             self.frames_dropped += 1
 

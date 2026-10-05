@@ -432,6 +432,8 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   gap: var(--s-3);
 }
+/* An empty state spans the whole grid instead of sitting in its first cell. */
+.pc-grid > .empty { grid-column: 1 / -1; }
 
 .pc {
   display: flex;
@@ -494,6 +496,23 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   backdrop-filter: blur(2px);
+}
+
+.pc__frozen {
+  position: absolute;
+  inset: var(--s-2) var(--s-2) auto auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(37, 99, 235, 0.92);
+  color: #fff;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+
+.btn--warn {
+  background: var(--warn-subtle);
+  border-color: var(--warn-border);
+  color: var(--warn);
 }
 
 .pc__meta {
@@ -864,6 +883,86 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
 .banner svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
 .banner strong { font-weight: var(--weight-semibold); }
 .banner--info { border-color: var(--accent-border); background: var(--accent-subtle); color: var(--accent-text); }
+
+/* ---- report session picker ---- */
+.select {
+  width: auto;
+  max-width: 340px;
+  padding-right: var(--s-6);
+  cursor: pointer;
+}
+
+/* ---- pairing (Pemasangan PC) ---- */
+.pairing {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--s-6);
+}
+@media (max-width: 1180px) {
+  .pairing { grid-template-columns: minmax(0, 1fr); gap: var(--s-5); }
+}
+
+.pairing__label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--s-2);
+}
+
+.pairing__code {
+  display: inline-block;
+  padding: var(--s-2) var(--s-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+.pairing__code.is-closed {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.pairing__note {
+  margin-top: var(--s-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 52ch;
+}
+.pairing__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-4); }
+
+.pairing__steps { min-width: 0; }
+.steps {
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+}
+.steps li + li { margin-top: var(--s-1); }
+.cmd {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.pairing__hint {
+  margin-top: var(--s-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
 
 /* =====================================================================
    Narrow screens (1366x768 is the floor we support)

@@ -11,9 +11,59 @@ Legenda: 🔑 = butuh Administrator, 🖥️ = butuh dua PC (agent + dashboard).
 - [ ] 🖥️ Agent di PC lab menemukan dashboard **tanpa konfigurasi IP** (UDP
   broadcast) dan terhubung. *Catatan: broadcast lintas-subnet/VLAN atau yang
   diblokir switch dapat gagal; sediakan `direct_url` sebagai cadangan.*
+- [ ] 🖥️ Ulangi saat jaringan PC pengawas berprofil **Publik**: aturan firewall
+  installer hanya untuk Privat/Domain, jadi PC lain diperkirakan **tidak**
+  menemukan dashboard (belum diuji di LAN sungguhan). Agent di PC pengawas
+  sendiri tetap menemukannya lewat 127.0.0.1.
 - [ ] 🖥️ Heartbeat muncul di dashboard; cabut kabel LAN agent → status menjadi
   `dropped` setelah timeout; sambung lagi → `online` kembali (auto-reconnect).
 - [ ] Token salah → agent ditolak (`reject`), tidak muncul di dashboard.
+
+## Pemasangan (pairing) agent
+
+Sudah terbukti otomatis: `tests/unit/test_pairing.py` (kode salah, lockout 5×
+per alamat, token per-agent tersimpan sebagai hash, pendaftaran ditutup,
+rotasi kode, redaksi log), `tests/integration/test_pairing_flow.py` dan
+`test_agent_app_e2e.py` (agent utuh: pairing lewat WebSocket sungguhan →
+restart memakai token tersimpan → pairing ulang setelah database dashboard
+di-reset; agent mengabaikan proxy sistem).
+
+**Uji manual yang sudah dijalankan (2026-10-05, container Linux, bukan
+Windows):** dashboard `--keep-running` + agent sebagai dua proses terpisah,
+penemuan lewat UDP broadcast (tanpa `--dashboard`):
+
+| Langkah | Hasil |
+|---|---|
+| Agent tanpa token & tanpa kode | Pesan "PC ini belum dipasangkan", exit 2 ✅ |
+| `--pair` kode salah | Ditolak sekali, pesan "kode pemasangan salah", exit 3, tidak mengunci PC ✅ |
+| `--pair` kode benar | "PC ini berhasil dipasangkan", token tersimpan (izin 600), PC muncul **Aktif** di Layar PC ✅ |
+| Restart tanpa kode | Masuk dengan token tersimpan, tidak ada pairing ulang ✅ |
+| Catatan aktivitas | "Kode pemasangan salah", "PC dipasangkan" tercatat ✅ |
+| Layar & ikon tray | Tidak dapat diuji (container tanpa layar; tray "indikator disembunyikan" — benar) |
+
+Ditemukan & diperbaiki saat uji manual: agent sebelumnya mengikuti **proxy
+sistem** sehingga koneksi LAN ke dashboard ditolak (HTTP 403) — di sekolah
+yang memasang proxy di Windows, agent tidak akan pernah terhubung.
+
+Masih perlu di Windows nyata:
+
+- [ ] 🖥️ Pasang agent di PC lab dengan `labsentinel-agent --pair KODE` → PC
+  muncul di "Layar PC" dalam beberapa detik; hitungan "PC sudah terpasang" di
+  halaman Aturan bertambah.
+- [ ] 🖥️ PC lab yang memakai **proxy di Internet Options** tetap terhubung ke
+  dashboard di LAN.
+- [ ] 🔑 File token di `C:\ProgramData\LabSentinel\agent\token` **tidak bisa
+  dibaca** akun peserta (non-admin): `type` dari akun peserta → "Access is
+  denied". (ACL dipasang installer; `chmod` 600 hanya berlaku di POSIX.)
+- [ ] Tutup pendaftaran di dashboard → PC baru ditolak dengan pesan
+  "pendaftaran PC baru sedang ditutup"; PC lama tetap terhubung.
+- [ ] Salah kode 5× dari PC yang sama (jalankan `--pair` lima kali dengan
+  kode salah) → percobaan ke-6 dengan kode benar ditolak "tunggu … detik";
+  PC lain tetap bisa dipasang.
+- [ ] **Clone disk image:** PC yang di-clone *setelah* agent dipasangkan
+  berbagi ID & token → keduanya saling memutus. Prosedur yang benar: clone
+  sebelum pairing, atau hapus `agent_id` + `token` lalu `--pair` di tiap PC
+  hasil clone (lihat panduan deploy).
 
 ## M2 — Enforcement whitelist (sebagian 🔑)
 
@@ -112,6 +162,12 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
 
 - [ ] 🖥️ Grid menampilkan thumbnail untuk semua PC lab; buka satu PC → gambar
   jelas dan lebih mulus. Tutup → kembali ke thumbnail.
+- [ ] 🖥️🔑 **Bekukan input:** di detail satu PC, **Bekukan input** → keyboard
+  dan mouse peserta berhenti, muncul notice layar penuh di PC peserta, dan PC
+  ditandai **❄ Dibekukan** di grid. **Cairkan input** → kembali normal.
+  Periksa pengaman: Ctrl+Alt+Del melepaskan pembekuan; menjeda PC itu atau
+  menghentikan service juga melepaskannya (peserta tidak terkunci permanen).
+  Belum teruji otomatis — `BlockInput` dan jendela notice Windows-only.
 - [ ] **Privasi:** jeda pemantauan → thumbnail berhenti diperbarui dan agent
   **berhenti menangkap layar** (periksa CPU agent turun). Pindah ke halaman
   selain "Layar PC" → streaming juga berhenti.
@@ -129,13 +185,147 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
 
 ## M6 — Mode, laporan, anti-tamper
 
+- [ ] 🖥️ Mode di PC peserta (uji coba dimatikan, akun peserta **standar**):
+  **Praktikum** — `code.exe` di daftar boleh jalan, `notepad.exe` ditutup,
+  situs tambahan (mis. `tiktok.com`) terblokir di Chrome dan Edge.
+  **Ujian** — `code.exe` ikut ditutup; semua kategori situs terblokir.
+  **Bebas** — tidak ada yang ditutup/diblokir, tetapi `notepad.exe` tercatat
+  "hanya dicatat" dan layar tetap terlihat. Logika ini teruji otomatis;
+  pemblokiran nyata di browser belum diuji di Windows.
+
+Sudah terbukti otomatis:
+
+- **Laporan** (`tests/unit/test_reports.py`): isi PDF dibaca balik dengan
+  pypdf (nama sesi, PC, jenis, catatan uji coba/judul jendela, "Halaman X dari
+  Y", gambar bukti tertanam, bukti hilang disebutkan), Excel dibaca balik dengan
+  openpyxl (tanggal asli, filter, header beku). Diunduh lewat tombol di browser
+  sungguhan terhadap demo lab (PDF & Excel).
+- **Anti-tamper** (`tests/integration/test_anti_tamper.py`,
+  `tests/unit/test_lifecycle.py`): proses agent **sungguhan** dibunuh SIGKILL →
+  start berikutnya melaporkan "Agent dihentikan paksa saat PC menyala" ke
+  dashboard; SIGTERM → berhenti bersih, **tidak** dilaporkan; stop layanan
+  manual → dilaporkan "dihentikan secara manual"; instans kedua ditolak tanpa
+  mengganggu yang berjalan; watchdog menangkap loop macet. Toast merah muncul
+  di dashboard sungguhan setelah `kill -9` (diperiksa di browser).
+
+Yang **belum bisa** diverifikasi tanpa Windows + Administrator:
+
 - [ ] Ganti profil (Ujian/Praktikum/Bebas) satu klik → agent menyesuaikan.
-- [ ] Ekspor laporan PDF & Excel berisi riwayat pelanggaran per sesi.
-- [ ] 🔑 Kill paksa proses agent (Task Manager) → watchdog/Service
-  menghidupkannya lagi; dashboard mencatat **pelanggaran tamper**.
+- [ ] Laporan PDF terbuka benar di Adobe Reader/Edge; nama PC dan judul jendela
+  berhuruf non-Latin tampil (font Segoe UI/Arial dipakai otomatis).
+- [ ] Laporan Excel terbuka di Microsoft Excel tanpa peringatan perbaikan;
+  kolom tanggal bisa diurutkan dan disaring.
+- [ ] 🔑 `labsentinel-agent --pair KODE --pair-only` lalu
+  `labsentinel-service install` → layanan **Lab Sentinel Agent** muncul di
+  `services.msc`, Startup type *Automatic*, berjalan sebagai *Local System*.
+- [ ] 🔑 Tab *Recovery* di `services.msc`: First/Second failure = Restart
+  the Service, Subsequent = Restart, "Enable actions for stops with errors"
+  tercentang.
+- [ ] 🔑 **Kill paksa** `labsentinel-service.exe` dari Task Manager → layanan
+  hidup lagi ≤ 10 detik; dashboard menampilkan toast merah "agent dihentikan
+  tidak wajar" dan baris di Laporan.
+- [ ] 🔑 `net stop LabSentinelAgent` → kebijakan browser dipulihkan
+  (`chrome://policy` kosong dari entri Lab Sentinel); `net start` → dashboard
+  mencatat "Layanan agent dihentikan secara manual".
+- [ ] Restart Windows normal (Start → Restart) → **tidak** ada catatan tamper.
+- [ ] Cabut daya / tahan tombol power → setelah menyala, catatan berbunyi "PC
+  mati atau restart tanpa shutdown normal".
+- [ ] 🔑 Jalankan `labsentinel-agent` manual saat layanan aktif → pesan "Agent
+  Lab Sentinel sudah berjalan di PC ini", layanan tidak terganggu.
+- [ ] Login sebagai peserta (non-admin) → ikon tray muncul otomatis
+  (`HKLM\...\Run\LabSentinelTray`); login sebagai peserta lain → ikon juga
+  muncul (log helper di `%LOCALAPPDATA%\LabSentinel\tray.log` masing-masing).
+- [ ] 🔑 Hapus nilai `LabSentinelTray` dari kunci Run lalu restart layanan →
+  nilainya kembali.
+- [ ] 🔑 `icacls C:\ProgramData\LabSentinel\agent\token` hanya menampilkan
+  `NT AUTHORITY\SYSTEM` dan `BUILTIN\Administrators`.
+- [ ] 🔑 `labsentinel-service remove` → layanan hilang, entri Run hilang,
+  kebijakan browser bersih.
+
+### Desktop worker (ADR-0006) — paling penting di Windows
+
+Saat agent berjalan sebagai layanan, **seluruh** penegakan, tangkapan layar,
+dan judul jendela bergantung pada desktop worker. Logika dan protokolnya diuji
+otomatis (`tests/integration/test_desktop_worker.py`), tetapi pemanggilan
+Windows-nya belum pernah dijalankan:
+
+- [ ] 🔑 Setelah login peserta, Task Manager (*Details*, sebagai admin)
+  menampilkan `labsentinel-agent.exe` dengan *User name* **SYSTEM** dan
+  *Session ID* = sesi peserta (bukan 0). Tidak ada jendela/konsol yang muncul.
+- [ ] Kartu PC di dashboard menampilkan **thumbnail layar asli** (bukan hitam)
+  dan **tidak** bertanda "layar tidak terjangkau".
+- [ ] Dalam mode ditegakkan: buka `notepad.exe` (tidak diizinkan) → peringatan
+  muncul lalu Notepad tertutup **dengan sopan** (WM_CLOSE: Notepad menanyakan
+  simpan bila ada isi).
+- [ ] Buka Steam / launcher game yang jendelanya muncul terlambat → tetap
+  ditutup begitu jendelanya tampil.
+- [ ] Buka situs terlarang yang lolos kebijakan (judul memuat kata kunci) →
+  pelanggaran "Dugaan situs terlarang" dengan tangkapan layar yang benar.
+- [ ] Tombol **Kunci layar** di dashboard benar-benar mengunci PC peserta.
+- [ ] Peserta (non-admin) mencoba *End task* worker SYSTEM → "Access is denied".
+- [ ] 🔑 Admin mengakhiri worker → dalam ≤ 15 detik muncul worker baru; kartu
+  sempat menampilkan "layar tidak terjangkau" lalu pulih.
+- [ ] Logout lalu login sebagai pengguna lain (atau *Switch user*) → worker
+  pindah ke sesi baru; thumbnail menampilkan desktop pengguna baru.
+- [ ] Layar dikunci (Win+L) → tidak ada crash; thumbnail hitam/terakhir; setelah
+  dibuka, kembali normal.
+
+### Helper tray dinyalakan ulang
+
+- [ ] Peserta menutup ikon tray dari Task Manager → dashboard menandai
+  "indikator disembunyikan" → dalam ±30 detik ikon muncul lagi (sebagai akun
+  peserta) dan tanda hilang.
+- [ ] Setelah login, hanya **satu** ikon Lab Sentinel (Run key dan layanan tidak
+  menghasilkan ikon ganda).
 
 ## M7 — Packaging & performa
 
-- [ ] Installer memasang agent sebagai Windows Service dan berjalan saat boot.
+Sudah terbukti di Linux: kedua build PyInstaller berhasil; dashboard beku
+melayani UI dan mengekspor PDF/Excel; agent beku pairing (`--pair-only`) lalu
+terhubung; tray beku berjalan.
+
+Sudah terbukti otomatis di Windows (workflow `.github/workflows/windows.yml`,
+runner Windows Server 2025, satu mesin): kedua installer dikompilasi; agent
+dipasang lewat jendela pemasangan (kode salah ditolak, kode benar berhasil,
+dashboard ditemukan lewat UDP); service, desktop worker, dan tray berjalan;
+dashboard menampilkan layar PC dan nama peserta; service yang dibunuh hidup
+lagi dan dilaporkan; uninstall bersih; pemasangan senyap `/PAIRCODE` berhasil.
+Screenshot: [docs/screenshots/windows](screenshots/windows). Belum terbukti:
+beberapa PC di LAN sungguhan, akun peserta standar (di runner semua proses
+berjalan sebagai admin), dan antivirus (belum ada pemindaian antivirus pada installer).
+
+- [ ] 🖥️ Antivirus yang dipakai sekolah tidak mengarantina installer atau
+  `C:\Program Files\LabSentinel` (uji **tanpa** pengecualian dulu, catat
+  hasilnya; lalu pasang pengecualian sesuai
+  [deploy-guide](deploy-guide.md#antivirus-dan-smartscreen-lakukan-sebelum-memasang)).
+
+- [ ] `python packaging/build.py --installer` di Windows menghasilkan dua
+  installer tanpa error (Inno Setup 6).
+- [ ] 🔑 Installer dashboard: pintasan menu Start membuka dashboard dengan
+  `--keep-running`; aturan firewall "Lab Sentinel Dashboard (agent)" dan
+  "(penemuan)" ada di `wf.msc`; jendela terbuka di Edge bila Chrome tidak ada.
+- [ ] 🔑 Installer agent diklik dua kali → satu permintaan UAC → jendela
+  "Pasang PC ini" (tanpa jendela konsol) → kode salah: "Kode salah" dan bisa
+  diulang di jendela yang sama → kode benar: "Berhasil dipasangkan", PC muncul
+  di dashboard, ikon tray tampil (paling lambat ±30 detik).
+- [ ] Jendela dibuka lagi dari menu Start → "PC ini sudah terpasang, layanan
+  berjalan" → **Pasangkan ulang** dengan kode baru → **tidak** ada catatan
+  "dihentikan secara manual" di dashboard.
+- [ ] Tampilan jendela pada layar 125%/150% (DPI tinggi) tetap tajam dan tidak
+  terpotong.
+- [ ] 🔑 Installer agent senyap: `/VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=…`
+  di 2–3 PC sekaligus → semua muncul; log `%TEMP%\Setup Log*.txt` memuat
+  `--pair ... -> 0`.
+- [ ] 🔑 Persiapan disk image (jendela ditutup dengan **Batal**, atau senyap
+  tanpa `/PAIRCODE`) → layanan **belum** terpasang, `agent_id` **tidak** ada;
+  clone; di tiap hasil clone menu Start → Pasangkan → muncul di dashboard dengan
+  ID berbeda per PC.
+- [ ] 🔑 Upgrade (jalankan installer versi sama/baru di atas yang lama) →
+  pairing dipertahankan, **tidak** ada catatan "dihentikan secara manual".
+- [ ] 🔑 Uninstall agent → layanan, aturan firewall, entri Run, dan berkas
+  `token` hilang; `chrome://policy` bersih.
+- [ ] Agent berjalan dari folder `C:\Program Files\LabSentinel\Agent` tanpa
+  Python terpasang di PC.
 - [ ] **Performa agent:** CPU rata-rata < 2% dan RAM < 100 MB saat idle
-  (ukur dengan Performance Monitor / `Get-Counter`). Catat angkanya.
+  (ukur dengan Performance Monitor / `Get-Counter`) — **jumlahkan layanan +
+  desktop worker + helper tray**. Catat angkanya.

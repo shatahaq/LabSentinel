@@ -153,8 +153,7 @@
         "set_dry_run",
         "lock_screen",
         "broadcast_message",
-        "start_hi_res_stream",
-        "stop_hi_res_stream"
+        "set_stream"
       ],
       "title": "CommandType",
       "type": "string"
@@ -218,6 +217,11 @@
           "minimum": 0.0,
           "title": "Cpu Percent",
           "type": "number"
+        },
+        "desktop_access": {
+          "default": true,
+          "title": "Desktop Access",
+          "type": "boolean"
         },
         "indicator_visible": {
           "default": true,
@@ -286,6 +290,19 @@
           "maxLength": 64,
           "title": "Os Version",
           "type": "string"
+        },
+        "pairing_code": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pairing Code"
         },
         "type": {
           "const": "hello",
@@ -570,6 +587,18 @@
     "WelcomePayload": {
       "additionalProperties": false,
       "properties": {
+        "agent_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Token"
+        },
         "heartbeat_interval_s": {
           "default": 5.0,
           "exclusiveMinimum": 0,

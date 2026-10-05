@@ -104,7 +104,7 @@ class EnforcementEngine:
         if self._is_duplicate(proc.pid):
             return None
 
-        dry_run = ruleset.dry_run or state is AgentState.DRY_RUN
+        dry_run = not ruleset.acts or state is AgentState.DRY_RUN
         kind = (
             ViolationKind.IMPERSONATION
             if match.verdict is MatchVerdict.IMPERSONATION

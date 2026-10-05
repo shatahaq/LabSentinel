@@ -75,7 +75,12 @@ class SafetyPolicy:
         if not proc.is_current_user:
             return SafetyDecision(SafetyVerdict.PROTECTED, "not owned by interactive user")
 
-        # 5. Only processes with a visible top-level window (user-facing apps).
+        # 5. Never what an administrator started (installer, uninstaller, admin
+        #    tools): a participant has no administrator rights to do that.
+        if proc.elevated:
+            return SafetyDecision(SafetyVerdict.PROTECTED, "started with administrator rights")
+
+        # 6. Only processes with a visible top-level window (user-facing apps).
         if not proc.has_visible_window:
             return SafetyDecision(SafetyVerdict.PROTECTED, "no visible window")
 
