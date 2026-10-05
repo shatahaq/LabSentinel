@@ -260,7 +260,7 @@
     const node = el(`
       <div class="feed__item" role="button" tabindex="0">
         <div class="feed__icon ${muted ? "feed__icon--muted" : ""}">
-          ${icon(v.kind === "site_title" ? "globe" : "app")}
+          ${icon({ site_title: "globe", agent_tamper: "alert" }[v.kind] || "app")}
         </div>
         <div class="feed__body">
           <div class="feed__title truncate">${esc(v.subject)}</div>
