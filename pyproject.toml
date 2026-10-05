@@ -49,6 +49,9 @@ labsentinel-service = "labsentinel_agent.service:main"
 labsentinel-tray = "labsentinel_agent.tray.__main__:main"
 labsentinel-dashboard = "labsentinel_dashboard.app:main"
 
+[project.gui-scripts]
+labsentinel-setup = "labsentinel_agent.gui.setup_window:main"
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"

@@ -240,6 +240,8 @@ class LabSentinelAgent:
         self.stop_reason = ""
         self._another_instance = False
         self._started = False
+        self.dashboard_name = ""  # from the discovery beacon, when found that way
+        self.pair_timeout_s: float | None = None  # --pair-only: None = PAIR_ONLY_TIMEOUT_S
 
     # ------------------------------------------------------------ lifecycle
     async def run(self) -> int:
@@ -389,7 +391,7 @@ class LabSentinelAgent:
         waiter = asyncio.ensure_future(issued.wait())
         try:
             await asyncio.wait(
-                {link, waiter}, timeout=PAIR_ONLY_TIMEOUT_S,
+                {link, waiter}, timeout=self.pair_timeout_s or PAIR_ONLY_TIMEOUT_S,
                 return_when=asyncio.FIRST_COMPLETED,
             )
         finally:
@@ -526,6 +528,7 @@ class LabSentinelAgent:
             log.info("no dashboard found on the network yet; will keep looking")
             return None
         log.info("found dashboard '%s' at %s", beacon.dashboard_name, beacon.ws_url)
+        self.dashboard_name = beacon.dashboard_name
         return beacon.ws_url
 
     async def shutdown(self) -> None:

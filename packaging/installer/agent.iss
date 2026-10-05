@@ -2,19 +2,20 @@
 ;
 ; Built by packaging/build.py --installer, which passes AppVersion and DistDir.
 ;
-; Interactive:  LabSentinelAgent-Setup-<versi>.exe
-;               asks for the 6-digit pairing code shown on the dashboard.
-; Silent (for deploying a whole lab, run as Administrator):
+; Interactive (one file to copy to each lab PC, double-click):
+;   UAC prompt -> files copied -> the pairing window opens (labsentinel-setup.exe):
+;   type the 6-digit code from the dashboard -> paired, service installed and
+;   started. Wrong code, closed registration or no dashboard are explained in
+;   the window and can be retried there.
+; Silent (a whole lab at once, run as Administrator):
 ;   LabSentinelAgent-Setup-<versi>.exe /VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=123456
 ;   ... optionally /DASHBOARD=ws://192.168.1.10:8765 if UDP discovery is blocked.
-;
-; What it does, in order:
-;   1. stops an older agent service (upgrade), copies files;
-;   2. pairs this PC (labsentinel-agent --pair KODE --pair-only) unless already paired;
-;   3. installs and starts the Windows Service (recovery + tray autostart + token ACL);
-;   4. opens UDP 50123 inbound for dashboard discovery;
-;   5. starts the tray indicator for whoever is logged in now.
-; Uninstall reverses 3-4, restores browser policy and removes this PC's token.
+;   Without /PAIRCODE nothing is paired and the service is not installed yet
+;   (disk image preparation); pair each clone later from the Start menu.
+; Upgrade: pairing is kept; the service is restarted without being reported
+;   as stopped by hand.
+; Uninstall: removes the service, firewall rule, tray autostart and this PC's
+;   token; browser policy is restored.
 
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -33,7 +34,9 @@ AppVersion={#AppVersion}
 AppPublisher=Lab Sentinel
 DefaultDirName={autopf}\LabSentinel\Agent
 DisableProgramGroupPage=yes
-DisableDirPage=auto
+DisableDirPage=yes
+DisableReadyPage=yes
+DisableFinishedPage=yes
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -44,7 +47,7 @@ WizardStyle=modern
 SetupLogging=yes
 CloseApplications=no
 UninstallDisplayName=Lab Sentinel Agent
-UninstallDisplayIcon={app}\labsentinel-agent.exe
+UninstallDisplayIcon={app}\labsentinel-setup.exe
 
 [Languages]
 ; Wizard buttons use Inno's English texts; every Lab Sentinel message below is
@@ -57,10 +60,16 @@ Source: "{#DistDir}\LabSentinelAgent\*"; DestDir: "{app}"; Flags: ignoreversion 
 [Dirs]
 Name: "{#DataDir}"
 
+[Icons]
+; Pair again later (new dashboard, cloned PC, registration was closed).
+Name: "{autoprograms}\Lab Sentinel\Pasangkan PC ini ke dashboard"; \
+  Filename: "{app}\labsentinel-setup.exe"
+
 [Run]
 ; The participant sees the indicator immediately, not only after the next login.
+; (If this PC is not paired yet the service starts the indicator itself later.)
 Filename: "{app}\labsentinel-tray.exe"; Parameters: "--data-dir ""{#DataDir}"""; \
-  Flags: nowait runasoriginaluser skipifsilent
+  Flags: nowait runasoriginaluser skipifsilent; Check: AlreadyPaired
 
 [UninstallRun]
 Filename: "{app}\labsentinel-service.exe"; Parameters: "remove"; \
@@ -77,54 +86,19 @@ Type: files; Name: "{#DataDir}\token"
 Type: files; Name: "{#DataDir}\running.json"
 
 [Code]
-var
-  PairPage: TInputQueryWizardPage;
-
 function AlreadyPaired(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{#DataDir}\token'));
 end;
 
-function DigitsOnly(const S: String): String;
-var
-  I: Integer;
+function PairCodeParam(): String;
 begin
-  Result := '';
-  for I := 1 to Length(S) do
-    if (S[I] >= '0') and (S[I] <= '9') then
-      Result := Result + S[I];
+  Result := Trim(ExpandConstant('{param:PAIRCODE|}'));
 end;
 
-procedure InitializeWizard();
+function DashboardParam(): String;
 begin
-  PairPage := CreateInputQueryPage(wpSelectDir,
-    'Pasangkan ke dashboard',
-    'Masukkan kode 6 digit dari dashboard pengawas.',
-    'Kode tampil di dashboard: halaman Aturan, kartu "Pemasangan PC baru". ' +
-    'Alamat dashboard boleh dikosongkan; agent menemukannya sendiri lewat jaringan lab. ' +
-    'Kosongkan kode untuk memasangkan nanti (misalnya saat menyiapkan disk image).');
-  PairPage.Add('Kode pemasangan (6 digit):', False);
-  PairPage.Add('Alamat dashboard (opsional, contoh ws://192.168.1.10:8765):', False);
-  PairPage.Values[0] := ExpandConstant('{param:PAIRCODE|}');
-  PairPage.Values[1] := ExpandConstant('{param:DASHBOARD|}');
-end;
-
-function ShouldSkipPage(PageID: Integer): Boolean;
-begin
-  // An upgrade keeps its pairing; there is nothing to type.
-  Result := (PageID = PairPage.ID) and AlreadyPaired();
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
-begin
-  Result := True;
-  if CurPageID = PairPage.ID then
-    if (Trim(PairPage.Values[0]) <> '') and (Length(DigitsOnly(PairPage.Values[0])) <> 6) then
-    begin
-      MsgBox('Kode pemasangan harus 6 digit angka, atau kosongkan untuk memasangkan nanti.',
-        mbError, MB_OK);
-      Result := False;
-    end;
+  Result := Trim(ExpandConstant('{param:DASHBOARD|}'));
 end;
 
 function RunHidden(const Exe, Params: String): Integer;
@@ -160,62 +134,69 @@ end;
 
 procedure WriteConfig(const Dashboard: String);
 begin
-  // agent.toml next to the programs; service, tray and CLI all read it.
+  // agent.toml next to the programs; service, tray, CLI and window all read it.
   if Dashboard <> '' then
     SaveStringToFile(ExpandConstant('{app}\agent.toml'),
       'direct_url = "' + Dashboard + '"' + #13#10, False);
 end;
 
-procedure PairThisPC();
-var
-  Code: Integer;
-  Params, Reason: String;
+procedure InstallAndStartService();
 begin
-  Params := '--pair ' + DigitsOnly(PairPage.Values[0]) + ' --pair-only';
-  if Trim(PairPage.Values[1]) <> '' then
-    Params := Params + ' --dashboard "' + Trim(PairPage.Values[1]) + '"';
-  Code := RunHidden(ExpandConstant('{app}\labsentinel-agent.exe'), Params);
-  if Code = 0 then
-    Exit;
-  case Code of
-    3: Reason := 'Dashboard menolak kode ini (kode salah, kedaluwarsa, ' +
-                 'atau pendaftaran PC baru sedang ditutup).';
-    5: Reason := 'Dashboard tidak ditemukan di jaringan. Pastikan dashboard berjalan, ' +
-                 'atau isi alamat dashboard.';
-  else
-    Reason := Format('Pemasangan gagal (kode keluar %d).', [Code]);
-  end;
-  SuppressibleMsgBox(Reason + #13#10#13#10 +
-    'Agent tetap terpasang tetapi belum aktif. Setelah masalahnya beres, jalankan ' +
-    'sebagai Administrator:' + #13#10 +
-    '  "' + ExpandConstant('{app}') + '\labsentinel-agent.exe" --pair-only' + #13#10 +
-    '  sc start {#ServiceName}', mbError, MB_OK, IDOK);
+  RunHidden(ExpandConstant('{app}\labsentinel-service.exe'), 'install');
+  RunHidden(ExpandConstant('{sys}\sc.exe'), 'start {#ServiceName}');
 end;
 
-function PairLater(): Boolean;
+procedure PairSilently(const Code: String);
+var
+  RC: Integer;
+  Params: String;
 begin
-  Result := (not AlreadyPaired()) and (Trim(PairPage.Values[0]) = '');
+  Params := '--pair ' + Code + ' --pair-only';
+  if DashboardParam() <> '' then
+    Params := Params + ' --dashboard "' + DashboardParam() + '"';
+  RC := RunHidden(ExpandConstant('{app}\labsentinel-agent.exe'), Params);
+  if RC = 0 then
+    InstallAndStartService()
+  else
+    // Shown only when not suppressed; the reason is also in the setup log.
+    SuppressibleMsgBox(Format('Pemasangan ke dashboard gagal (kode %d). Buka menu Start, ' +
+      'Lab Sentinel, "Pasangkan PC ini ke dashboard" untuk mencoba lagi.', [RC]),
+      mbError, MB_OK, IDOK);
+end;
+
+procedure OpenPairingWindow();
+var
+  Code: Integer;
+begin
+  // Already elevated by the installer, so the window does not ask again.
+  if not Exec(ExpandConstant('{app}\labsentinel-setup.exe'), '', '', SW_SHOWNORMAL,
+              ewWaitUntilTerminated, Code) then
+    Code := -1;
+  Log(Format('pairing window closed -> %d', [Code]));
+  // The window installs and starts the service itself when pairing succeeds.
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep <> ssPostInstall then
     Exit;
-  WriteConfig(Trim(PairPage.Values[1]));
-  if PairLater() then
-    // Disk image preparation: no pairing and no first start here, so no
-    // agent identity is created inside the image. Each clone creates its own
-    // when the service first starts, then is paired with --pair-only.
-    Log('No pairing code given: pairing deferred, service not started now.')
-  else if not AlreadyPaired() then
-    PairThisPC();
-  RunHidden(ExpandConstant('{app}\labsentinel-service.exe'), 'install');
+  WriteConfig(DashboardParam());
   RunHidden(ExpandConstant('{sys}\netsh.exe'),
     'advfirewall firewall delete rule name="Lab Sentinel Agent (penemuan dashboard)"');
   RunHidden(ExpandConstant('{sys}\netsh.exe'),
     'advfirewall firewall add rule name="Lab Sentinel Agent (penemuan dashboard)" ' +
     'dir=in action=allow protocol=UDP localport=50123 ' +
     'program="' + ExpandConstant('{app}\labsentinel-service.exe') + '"');
-  if not PairLater() then
-    RunHidden(ExpandConstant('{sys}\sc.exe'), 'start {#ServiceName}');
+
+  if AlreadyPaired() then
+    InstallAndStartService()            // upgrade / reinstall: keep the pairing
+  else if PairCodeParam() <> '' then
+    PairSilently(PairCodeParam())       // /PAIRCODE=...: no window
+  else if not WizardSilent() then
+    OpenPairingWindow()                 // double-clicked: ask in a window
+  else
+    // Silent without a code (disk image): nothing paired, service not
+    // installed, so the image carries no identity. Pair each clone from the
+    // Start menu entry.
+    Log('No pairing code: pairing deferred.');
 end;

@@ -277,7 +277,8 @@ def remove() -> None:  # pragma: no cover - Windows only
     with contextlib.suppress(Exception):
         win32serviceutil.StopService(SERVICE_NAME)
         win32serviceutil.WaitForServiceStatus(SERVICE_NAME, win32service.SERVICE_STOPPED, 30)
-    win32serviceutil.RemoveService(SERVICE_NAME)
+    with contextlib.suppress(Exception):  # never installed (pairing was cancelled)
+        win32serviceutil.RemoveService(SERVICE_NAME)
     with contextlib.suppress(OSError):
         autostart.disable(WinRegistry())
     # An uninstall is not a tamper event for a future reinstall to report.
