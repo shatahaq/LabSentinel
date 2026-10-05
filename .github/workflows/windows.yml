@@ -1,0 +1,142 @@
+# Builds the Windows programs and installers, and checks them on a real
+# Windows machine (GitHub's windows-latest runner, which has an
+# administrator account with a logged-in desktop session).
+#
+#   test     the full pytest suite on Windows (incl. tests marked "windows")
+#   build    PyInstaller + Inno Setup -> the two installers (artifact)
+#   e2e      installs both from those installers and checks, for real:
+#            service running, desktop worker in the user's session, PC paired
+#            and connected, recovery after a forced kill, clean uninstall
+name: Windows
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dashboard,agent,dev]"
+      - name: Lint
+        run: python -m ruff check .
+      - name: Types
+        run: python -m mypy shared agent dashboard
+      - name: Tests
+        run: python -m pytest -ra
+
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dashboard,agent,packaging]"
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build
+        run: python packaging/build.py --installer
+      - name: Built programs start
+        shell: pwsh
+        run: |
+          & build\dist\LabSentinelAgent\labsentinel-agent.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "labsentinel-agent.exe --help failed" }
+          & build\dist\LabSentinelDashboard\labsentinel-dashboard.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "labsentinel-dashboard.exe --help failed" }
+          Get-ChildItem build\installer | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LabSentinel-installers
+          path: build/installer/*.exe
+          if-no-files-found: error
+
+  e2e:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: LabSentinel-installers
+          path: installers
+      - name: Install and start the dashboard
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installers\LabSentinelDashboard-Setup-*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/LOG=dashboard-setup.log" -Wait
+          $exe = "C:\Program Files\LabSentinel\Dashboard\labsentinel-dashboard.exe"
+          if (-not (Test-Path $exe)) { throw "dashboard not installed" }
+          Start-Process $exe -ArgumentList "--keep-running","--no-browser" -RedirectStandardOutput dashboard.out -RedirectStandardError dashboard.err
+          Start-Sleep -Seconds 15
+          Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Out-Null
+          "dashboard listening on 8765"
+      - name: Install the agent silently with the pairing code
+        shell: pwsh
+        run: |
+          $code = python packaging/ci/dashboard_state.py code
+          "pairing code: $code"
+          $setup = Get-ChildItem installers\LabSentinelAgent-Setup-*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/PAIRCODE=$code","/DASHBOARD=ws://127.0.0.1:8765","/LOG=agent-setup.log" -Wait
+          Start-Sleep -Seconds 25
+      - name: Check service, desktop worker and connection
+        shell: pwsh
+        run: |
+          sc.exe query LabSentinelAgent
+          sc.exe qfailure LabSentinelAgent
+          Get-CimInstance Win32_Process -Filter "Name LIKE 'labsentinel%'" |
+            Select-Object ProcessId, Name, SessionId, CommandLine | Format-Table -AutoSize -Wrap
+          icacls C:\ProgramData\LabSentinel\agent\token
+          python packaging/ci/dashboard_state.py check-connected
+      - name: Kill the service process; it must come back and be reported
+        shell: pwsh
+        run: |
+          $svc = Get-CimInstance Win32_Service -Filter "Name='LabSentinelAgent'"
+          "service pid before: $($svc.ProcessId)"
+          Stop-Process -Id $svc.ProcessId -Force
+          Start-Sleep -Seconds 30
+          $svc = Get-CimInstance Win32_Service -Filter "Name='LabSentinelAgent'"
+          "service state after: $($svc.State) pid $($svc.ProcessId)"
+          if ($svc.State -ne "Running") { throw "service did not restart after a forced kill" }
+          python packaging/ci/dashboard_state.py check-tamper
+      - name: Uninstall the agent
+        shell: pwsh
+        run: |
+          $un = "C:\Program Files\LabSentinel\Agent\unins000.exe"
+          Start-Process $un -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES" -Wait
+          Start-Sleep -Seconds 5
+          sc.exe query LabSentinelAgent
+          if ($LASTEXITCODE -eq 0) { throw "service still installed after uninstall" }
+          if (Test-Path C:\ProgramData\LabSentinel\agent\token) { throw "token left behind" }
+          "uninstalled cleanly"
+      - name: Collect logs
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force e2e-logs | Out-Null
+          Copy-Item *.log, dashboard.out, dashboard.err e2e-logs -ErrorAction SilentlyContinue
+          Copy-Item C:\ProgramData\LabSentinel\agent\logs\* e2e-logs -ErrorAction SilentlyContinue
+          Copy-Item C:\ProgramData\LabSentinel\dashboard\logs\* e2e-logs -ErrorAction SilentlyContinue
+          Get-ChildItem $env:TEMP -Filter "Setup Log*.txt" | Copy-Item -Destination e2e-logs -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-logs
+          path: e2e-logs
