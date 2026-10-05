@@ -99,7 +99,10 @@ Administrator) lewat [manual-test-checklist.md](manual-test-checklist.md):
   "Terjadwal", tetapi belum ada formulir untuk membuatnya.
 
 - Installer belum ditandatangani (code signing) → Windows SmartScreen akan
-  memperingatkan. Teks tombol wizard Inno Setup berbahasa Inggris (pesan Lab
+  memperingatkan, dan antivirus **bisa** salah mendeteksinya (belum diuji di
+  antivirus mana pun). Atasi dengan pengecualian folder oleh admin
+  ([deploy-guide](deploy-guide.md#antivirus-dan-smartscreen-lakukan-sebelum-memasang));
+  solusi permanennya code signing. Teks tombol wizard Inno Setup berbahasa Inggris (pesan Lab
   Sentinel berbahasa Indonesia); tambahkan `Indonesian.isl` bila perlu.
 - PDF menyertakan paling banyak 30 bukti tangkapan layar; sisanya bisa dibuka di
   dashboard (laporan menyebutkannya).

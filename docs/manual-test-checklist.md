@@ -268,8 +268,22 @@ Windows-nya belum pernah dijalankan:
 
 Sudah terbukti di Linux: kedua build PyInstaller berhasil; dashboard beku
 melayani UI dan mengekspor PDF/Excel; agent beku pairing (`--pair-only`) lalu
-terhubung; tray beku berjalan. Installer Inno Setup **belum pernah
-dikompilasi**.
+terhubung; tray beku berjalan.
+
+Sudah terbukti otomatis di Windows (workflow `.github/workflows/windows.yml`,
+runner Windows Server 2025, satu mesin): kedua installer dikompilasi; agent
+dipasang lewat jendela pemasangan (kode salah ditolak, kode benar berhasil,
+dashboard ditemukan lewat UDP); service, desktop worker, dan tray berjalan;
+dashboard menampilkan layar PC dan nama peserta; service yang dibunuh hidup
+lagi dan dilaporkan; uninstall bersih; pemasangan senyap `/PAIRCODE` berhasil.
+Screenshot: [docs/screenshots/windows](screenshots/windows). Belum terbukti:
+beberapa PC di LAN sungguhan, akun peserta standar (di runner semua proses
+berjalan sebagai admin), dan antivirus (belum ada pemindaian antivirus pada installer).
+
+- [ ] 🖥️ Antivirus yang dipakai sekolah tidak mengarantina installer atau
+  `C:\Program Files\LabSentinel` (uji **tanpa** pengecualian dulu, catat
+  hasilnya; lalu pasang pengecualian sesuai
+  [deploy-guide](deploy-guide.md#antivirus-dan-smartscreen-lakukan-sebelum-memasang)).
 
 - [ ] `python packaging/build.py --installer` di Windows menghasilkan dua
   installer tanpa error (Inno Setup 6).

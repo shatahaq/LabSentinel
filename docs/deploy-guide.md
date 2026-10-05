@@ -39,6 +39,48 @@ Berkas installer (dibuat dengan `python packaging/build.py --installer`, lihat
 - Lalu lintas agent tidak terenkripsi (lihat batasan); utamakan VLAN lab
   tersendiri.
 
+### Antivirus dan SmartScreen (lakukan sebelum memasang)
+
+Agent bekerja seperti software pengawas pada umumnya: berjalan sebagai service,
+mengambil tangkapan layar, dan menutup aplikasi. Installer juga belum
+ditandatangani (code signing). Karena itu antivirus **bisa** salah mengira
+program ini berbahaya (*false positive*). Hal ini **belum diuji** pada
+antivirus mana pun. Cara termudah mencegahnya: admin sekolah memberi
+pengecualian **sebelum** memasang, di PC peserta dan PC pengawas.
+
+**Microsoft Defender, per PC** (PowerShell sebagai Administrator):
+
+```powershell
+Add-MpPreference -ExclusionPath "C:\Program Files\LabSentinel"
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath   # periksa
+```
+
+**Microsoft Defender, seluruh lab lewat Group Policy:** Computer Configuration
+→ Administrative Templates → Windows Components → Microsoft Defender Antivirus
+→ Exclusions → **Path Exclusions** → isi `C:\Program Files\LabSentinel` dengan
+nilai `0`.
+
+**Antivirus lain** (ESET, Kaspersky, Avast, Smadav, dll.): tambahkan folder
+yang sama sebagai pengecualian di konsol manajemennya.
+
+- Kecualikan **folder**, jangan nama proses. Folder di `Program Files` hanya
+  bisa diubah administrator, jadi peserta tidak bisa menaruh program di sana.
+  Pengecualian berdasarkan nama proses bisa diakali dengan mengganti nama
+  game.
+- Bila installer sudah terlanjur dikarantina, pulihkan dari karantina
+  antivirus setelah pengecualian dipasang, lalu ulangi instalasi.
+
+**SmartScreen** ("Windows protected your PC") tidak terpengaruh pengecualian
+di atas. Peringatan ini muncul karena file installer bertanda "diunduh dari
+internet". Hapus tanda itu sekali sebelum menyebarkan installer:
+
+```powershell
+Unblock-File .\LabSentinelAgent-Setup-*.exe
+```
+
+(atau klik kanan file → Properties → centang **Unblock** → OK). Bila
+peringatan tetap muncul, klik **More info → Run anyway**.
+
 ## 3. Pasang dashboard (PC pengawas)
 
 1. Jalankan `LabSentinelDashboard-Setup-<versi>.exe` sebagai Administrator.
