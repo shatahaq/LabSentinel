@@ -56,6 +56,7 @@ EXPOSED = (
     "start_session", "end_session", "schedule_session", "cancel_session", "list_sessions",
     "get_violations", "get_screenshot", "get_audit",
     "get_pairing", "rotate_pairing_code", "set_pairing_open",
+    "export_report",
 )
 
 
@@ -191,6 +192,7 @@ class DashboardApp:
         bridge = UiBridge(
             service=self.service, sessions=self.sessions, rules=self.rules,
             db=self.db, bus=self.bus, loop=self.loop, pairing=self.pairing,
+            reports_dir=self.config.data_dir / "reports",
         )
         eel.init(str(WEB_DIR))
         for name in EXPOSED:

@@ -39,6 +39,7 @@ dev = [
     "black>=24.0",
     "mypy>=1.10",
     "pre-commit>=3.7",
+    "pypdf>=4.0",  # reads generated report PDFs back in tests
 ]
 packaging = ["pyinstaller>=6.0"]
 

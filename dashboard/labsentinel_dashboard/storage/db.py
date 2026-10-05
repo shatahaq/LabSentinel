@@ -422,6 +422,25 @@ class Database:
             for r in rows
         ]
 
+    def list_audit_between(self, start: float, end: float) -> list[AuditRow]:
+        """Audit entries in ``[start, end]``, oldest first (for session reports)."""
+        rows = self._query(
+            "SELECT * FROM audit_log WHERE ts >= ? AND ts <= ? ORDER BY ts ASC, id ASC",
+            (start, end),
+        )
+        return [
+            AuditRow(
+                id=r["id"],
+                ts=r["ts"],
+                actor=r["actor"],
+                action=r["action"],
+                target=r["target"],
+                details=json.loads(r["details"]),
+                result=r["result"],
+            )
+            for r in rows
+        ]
+
     # -- sessions -------------------------------------------------------------
     def create_session(
         self,

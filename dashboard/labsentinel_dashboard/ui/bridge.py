@@ -26,6 +26,7 @@ import threading
 import time
 from collections import deque
 from collections.abc import Coroutine
+from pathlib import Path
 from typing import Any
 
 from labsentinel_dashboard.domain.events import EventBus
@@ -42,6 +43,10 @@ from labsentinel_shared.rules import AppRule, RuleSet, SiteRule
 log = logging.getLogger("labsentinel.dashboard.ui")
 
 MAX_BUFFERED_EVENTS = 2000
+REPORT_FORMATS = {
+    "pdf": ("pdf", "application/pdf"),
+    "xlsx": ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+}
 CALL_TIMEOUT_S = 20.0
 
 
@@ -56,6 +61,7 @@ class UiBridge:
         bus: EventBus,
         loop: asyncio.AbstractEventLoop,
         pairing: PairingService | None = None,
+        reports_dir: Path | None = None,
         actor: str = "pengawas",
     ) -> None:
         self._svc = service
@@ -63,6 +69,7 @@ class UiBridge:
         self._rules = rules
         self._db = db
         self._pairing = pairing
+        self._reports_dir = reports_dir
         self._loop = loop
         self._actor = actor
         self._events: deque[dict[str, Any]] = deque(maxlen=MAX_BUFFERED_EVENTS)
@@ -311,6 +318,59 @@ class UiBridge:
 
     def list_sessions(self) -> dict[str, Any]:
         return self._ok(sessions=[_session_dict(s) for s in self._db.list_sessions(limit=100)])
+
+    # ------------------------------------------------------------ reports
+    def export_report(self, session_id: int, fmt: str) -> dict[str, Any]:
+        """Build a session report as PDF or Excel.
+
+        Returned as base64 so the page can offer it as a download, and also
+        saved under the dashboard's data folder so a copy survives a closed
+        browser tab.
+        """
+        import base64
+
+        from labsentinel_dashboard.reports import ReportError, build_session_report
+
+        kind = str(fmt).lower()
+        if kind not in REPORT_FORMATS:
+            return self._err("Format laporan tidak dikenal.")
+        try:
+            report = build_session_report(self._db, int(session_id))
+            if kind == "pdf":
+                from labsentinel_dashboard.reports.pdf import render_pdf
+
+                data = render_pdf(report)
+            else:
+                from labsentinel_dashboard.reports.xlsx import render_xlsx
+
+                data = render_xlsx(report)
+        except ReportError as exc:
+            return self._err(str(exc))
+        except (TypeError, ValueError):
+            return self._err("Sesi tidak valid.")
+        except Exception:
+            log.exception("export_report failed")
+            return self._err("Gagal membuat laporan.")
+
+        ext, mime = REPORT_FORMATS[kind]
+        filename = report.filename(ext)
+        saved_to = ""
+        if self._reports_dir is not None:
+            try:
+                self._reports_dir.mkdir(parents=True, exist_ok=True)
+                target = self._reports_dir / filename
+                target.write_bytes(data)
+                saved_to = str(target)
+            except OSError:
+                log.warning("could not save a copy of %s", filename, exc_info=True)
+        self._db.audit(
+            actor=self._actor, action="report.export", target=report.session.name,
+            details={"session_id": report.session.id, "format": kind}, result="ok",
+        )
+        return self._ok(
+            filename=filename, mime=mime, saved_to=saved_to,
+            b64=base64.b64encode(data).decode("ascii"),
+        )
 
     # ------------------------------------------------------------ pairing
     def get_pairing(self) -> dict[str, Any]:

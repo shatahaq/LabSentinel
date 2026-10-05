@@ -23,6 +23,7 @@
     selected: new Set(),
     openAgent: null,
     focusPairing: false,
+    reportSession: undefined,  // undefined = not chosen yet; null = all sessions
   };
 
   /* ===================================================================
@@ -904,10 +905,78 @@
              "hiburan": "hiburan" }[category] || category;
   }
 
+  /* Session picker + downloads. A report is always about one session, so the
+     download buttons wait until one is chosen. */
+  async function renderReportActions() {
+    const host = $("#report-actions");
+    const res = await API.listSessions();
+    const sessions = res.ok ? res.sessions.filter((s) => s.started_at) : [];
+    if (State.reportSession === undefined) {
+      State.reportSession = sessions.length ? sessions[0].id : null;  // newest first
+    }
+    const opt = (s) => {
+      const when = datetime(s.started_at);
+      const live = s.status === "active" ? " · berjalan" : "";
+      return `<option value="${s.id}" ${State.reportSession === s.id ? "selected" : ""}>
+        ${esc(s.name)} — ${esc(when)}${live}</option>`;
+    };
+    host.innerHTML = `
+      <label class="visually-hidden" for="report-session">Sesi</label>
+      <select class="input select" id="report-session">
+        <option value="" ${State.reportSession === null ? "selected" : ""}>Semua sesi</option>
+        ${sessions.map(opt).join("")}
+      </select>
+      <button class="btn" id="report-pdf">${icon("download", "btn__icon")}Unduh PDF</button>
+      <button class="btn" id="report-xlsx">${icon("download", "btn__icon")}Unduh Excel</button>`;
+
+    const sync = () => {
+      const none = State.reportSession === null;
+      ["#report-pdf", "#report-xlsx"].forEach((sel) => {
+        $(sel).disabled = none;
+        $(sel).title = none ? "Pilih satu sesi untuk membuat laporan." : "";
+      });
+    };
+    sync();
+    $("#report-session").addEventListener("change", (e) => {
+      State.reportSession = e.target.value ? parseInt(e.target.value, 10) : null;
+      sync();
+      renderViolationRows();
+    });
+    const download = (fmt) => async (e) => {
+      await withBusy(e.currentTarget, async () => {
+        const r = await API.exportReport(State.reportSession, fmt);
+        if (!r.ok) { toast("Laporan gagal dibuat", r.error, "error"); return; }
+        saveBase64(r.b64, r.filename, r.mime);
+        toast("Laporan dibuat", r.saved_to ? `Salinan tersimpan di ${r.saved_to}` : r.filename, "ok");
+      });
+    };
+    $("#report-pdf").addEventListener("click", download("pdf"));
+    $("#report-xlsx").addEventListener("click", download("xlsx"));
+  }
+
+  function saveBase64(b64, filename, mime) {
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
   async function renderViolations() {
+    await renderReportActions();
+    await renderViolationRows();
+  }
+
+  async function renderViolationRows() {
     const host = $("#violations-table");
     host.innerHTML = '<div class="skeleton" style="height:200px;margin:var(--s-4)"></div>';
-    const res = await API.getViolations();
+    const res = await API.getViolations(State.reportSession || null, 1000);
     if (!res.ok) {
       host.innerHTML = "";
       host.appendChild(empty({ iconName: "alert", title: "Gagal memuat", text: res.error }));
@@ -917,7 +986,9 @@
       host.innerHTML = "";
       host.appendChild(empty({
         iconName: "check", title: "Belum ada pelanggaran tercatat",
-        text: "Riwayat akan terisi saat peserta membuka aplikasi atau situs yang tidak diizinkan.",
+        text: State.reportSession
+          ? "Tidak ada pelanggaran pada sesi ini. Laporannya tetap bisa diunduh sebagai bukti sesi berjalan tertib."
+          : "Riwayat akan terisi saat peserta membuka aplikasi atau situs yang tidak diizinkan.",
       }));
       return;
     }
@@ -969,6 +1040,7 @@
     "pairing.open": "Membuka pendaftaran PC baru",
     "pairing.close": "Menutup pendaftaran PC baru",
     "pairing.revoke": "Mencabut pemasangan PC",
+    "report.export": "Mengunduh laporan sesi",
   };
 
   function actionLabel(code) {

@@ -50,6 +50,7 @@
     getViolations: (sessionId, limit) => call("get_violations", sessionId || null, limit || 200),
     getScreenshot: (id) => call("get_screenshot", id),
     getAudit: (limit) => call("get_audit", limit || 300),
+    exportReport: (sessionId, fmt) => call("export_report", sessionId, fmt),
 
     getPairing: () => call("get_pairing"),
     rotatePairingCode: () => call("rotate_pairing_code"),

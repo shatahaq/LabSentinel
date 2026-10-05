@@ -867,6 +867,14 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
 .banner strong { font-weight: var(--weight-semibold); }
 .banner--info { border-color: var(--accent-border); background: var(--accent-subtle); color: var(--accent-text); }
 
+/* ---- report session picker ---- */
+.select {
+  width: auto;
+  max-width: 340px;
+  padding-right: var(--s-6);
+  cursor: pointer;
+}
+
 /* ---- pairing (Pemasangan PC) ---- */
 .pairing {
   display: grid;
