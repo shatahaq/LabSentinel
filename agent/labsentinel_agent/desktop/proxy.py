@@ -247,7 +247,8 @@ class DesktopProxy:
         return None if result is None else bool(result)
 
     def freeze(self, on: bool) -> bool | None:
-        result = self.request("freeze", {"on": bool(on)}, timeout=2.0)
+        # Releasing joins the hold thread (up to ~3s), so allow for that here.
+        result = self.request("freeze", {"on": bool(on)}, timeout=4.0)
         return None if result is None else bool(result)
 
 
