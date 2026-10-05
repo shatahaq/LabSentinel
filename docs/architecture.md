@@ -1,125 +1,173 @@
 # Arsitektur Lab Sentinel
 
-Dokumen ini menjelaskan desain sistem dan keputusan utama. Catatan keputusan
-singkat ada di [adr/](adr/).
+Dokumen ini menjelaskan desain sistem setelah M1–M7. Keputusan penting dicatat
+singkat di [adr/](adr/); batasan yang diketahui ada di
+[limitations.md](limitations.md).
 
 ## 1. Gambaran umum
 
-Dua komponen di LAN:
-
 ```
-  PC Peserta (tiap lab PC)                         PC Pengawas
- ┌───────────────────────────┐                   ┌────────────────────────────┐
- │ Agent (Windows Service)    │   WebSocket/LAN   │ Dashboard                  │
- │  • enforcement whitelist   │  layar,           │  • WS server (asyncio)     │
- │  • kebijakan situs browser │  pelanggaran,     │  • SQLite (aturan, log,    │
- │  • baca judul jendela      │  heartbeat ───────▶   bukti)                   │
- │  • screenshot bukti        │                   │  • UI admin (Eel, localhost)│
- │  • tray indikator          │◀── aturan,        │  • beacon UDP discovery    │
- │  • watchdog + heartbeat    │    perintah       │                            │
- └───────────────────────────┘                   └────────────────────────────┘
+ PC peserta (tiap PC lab)                                  PC pengawas
+┌──────────────────────────────────────────────┐        ┌──────────────────────────────┐
+│ session 0                                      │        │ labsentinel-dashboard.exe    │
+│ ┌──────────────────────────────────────────┐ │  LAN   │ ┌──────────────────────────┐ │
+│ │ labsentinel-service.exe  (SYSTEM)        │ │ WS     │ │ thread asyncio:          │ │
+│ │  • aturan, keputusan, pencatatan         │◀┼────────┼▶│  server WebSocket :8765  │ │
+│ │  • kebijakan browser (HKLM)              │ │ :8765  │ │  beacon UDP :50123       │ │
+│ │  • koneksi dashboard, heartbeat          │ │        │ │  watchdog heartbeat      │ │
+│ │  • run marker, watchdog loop             │ │◀ UDP ─┼─│  penjadwal sesi          │ │
+│ └─────────▲──────────────────▲─────────────┘ │ 50123  │ ├──────────────────────────┤ │
+│   loopback│token SYSTEM      │loopback token │        │ │ SQLite (WAL) + berkas    │ │
+│ ──────────┼──────────────────┼───────────────│        │ │ bukti + laporan          │ │
+│ sesi pengguna (konsol)       │               │        │ ├──────────────────────────┤ │
+│ ┌─────────┴──────────────┐ ┌─┴─────────────┐ │        │ │ thread utama: Eel/gevent │ │
+│ │ desktop worker (SYSTEM)│ │ helper tray   │ │        │ │ UI admin di localhost    │ │
+│ │ jendela, judul, layar, │ │ (akun peserta)│ │        │ │ :8080 (Chrome/Edge)      │ │
+│ │ WM_CLOSE, kunci layar  │ │ ikon + popup  │ │        │ └──────────────────────────┘ │
+│ └────────────────────────┘ └───────────────┘ │        └──────────────────────────────┘
+└──────────────────────────────────────────────┘
 ```
 
-Agent = **client**. Dashboard = **server WebSocket** untuk semua agent, plus
-server Eel terpisah khusus UI admin di `localhost`. Pemisahan ini disengaja
-([ADR-0001](adr/0001-transport-split.md)): Eel berbasis gevent dan tidak
-dirancang sebagai server many-client; `websockets` (asyncio) menangani 40+ agent
-di loop-nya sendiri, di thread terpisah dari UI.
+**Agent = client, dashboard = server.** Dashboard menjalankan server WebSocket
+khusus untuk 40+ agent di loop asyncio-nya sendiri, terpisah dari Eel yang hanya
+melayani UI admin di `localhost` ([ADR-0001](adr/0001-transport-split.md)).
 
-## 2. Lapisan (layering)
+Satu instalasi agent terdiri dari **tiga proses**:
 
-Kode dipisah per tanggung jawab agar dapat diuji dan di-mock:
+| Proses | Berjalan sebagai | Tugas | ADR |
+|---|---|---|---|
+| `labsentinel-service.exe` | LocalSystem, session 0 | Semua keputusan: whitelist, kebijakan situs, sesi, pencatatan, koneksi dashboard | [0004](adr/0004-agent-two-process-split.md) |
+| desktop worker (`labsentinel-agent.exe --desktop-worker`) | **SYSTEM di sesi pengguna** | Hanya mengamati/melaksanakan di desktop: daftar jendela, judul jendela aktif, tangkapan layar, menutup jendela, kunci layar | [0006](adr/0006-desktop-access-from-the-service.md) |
+| `labsentinel-tray.exe` | akun peserta | Ikon tray dan popup peringatan (transparansi) | [0004](adr/0004-agent-two-process-split.md) |
+
+Layanan tidak bisa melihat desktop dari session 0, karena itu ada worker.
+Peserta (pengguna standar) tidak dapat mengakhiri layanan maupun worker; helper
+tray boleh dimatikan, tetapi akan dinyalakan lagi oleh layanan dan selama hilang
+dashboard menampilkan "indikator disembunyikan".
+
+## 2. Peta modul
 
 | Lapisan | Modul | Catatan |
-|---------|-------|---------|
-| **Transport** | `dashboard/.../transport/server.py`, `agent/.../transport/client.py` | Hanya soal socket, handshake, framing. Bebas dari logika enforcement/penyimpanan lewat callback & Protocol. |
-| **Protokol/domain** | `shared/labsentinel_shared/protocol.py`, `rules.py`, `enums.py` | Skema pesan versi-ed (pydantic), model aturan. Murni, lintas-OS. |
-| **Keamanan** | `shared/.../security.py` | Token (hash + constant-time compare), anti-replay. |
-| **Discovery** | `shared/.../discovery.py` | Beacon UDP + probe. |
-| **Enforcement** | `agent/.../enforce/*` (M2+) | Di balik interface; akses WMI/registry/proses di-mock saat test. |
-| **Penyimpanan** | `dashboard/.../storage/*` (M3+) | SQLite, parameterized. |
-| **UI** | `dashboard/web/*` + Eel bridge (M5+) | HTML/CSS/JS, design system tunggal. |
+|---|---|---|
+| Protokol | `shared/.../protocol.py`, `enums.py`, `rules.py` | Skema pesan pydantic versi-ed; diekspor ke `shared/schema/protocol.v1.schema.json` |
+| Keamanan | `shared/.../security.py`, `dashboard/.../domain/pairing.py` | Kode pairing, token per-agent (hash), rate limiter, anti-replay |
+| Discovery | `shared/.../discovery.py` | Beacon & probe UDP |
+| Transport | `agent/.../transport/client.py`, `dashboard/.../transport/server.py` | Handshake, framing, reconnect; tanpa logika domain |
+| Enforcement | `agent/.../enforce/*` | Safety gate (deny-by-default), matcher, engine, deteksi judul |
+| Kebijakan browser | `agent/.../policy/*` | Backup→tulis→pulihkan kebijakan Chrome/Edge di HKLM ([ADR-0003](adr/0003-site-blocking-via-policy.md)) |
+| Desktop | `agent/.../desktop/*` | Proxy (layanan), worker (sesi pengguna), supervisor/spawn, pemilihan jalur |
+| Siklus hidup | `agent/.../lifecycle.py`, `service.py`, `autostart.py` | Satu instans, run marker, watchdog, Windows Service, Run key tray |
+| Platform | `agent/.../platform/*` | psutil/pywin32/WMI/mss/ACL; di-*mock* saat test |
+| Domain dashboard | `dashboard/.../domain/*` | Layanan PC, perintah ber-ACK, sesi & jadwal, aturan, event bus |
+| Penyimpanan | `dashboard/.../storage/db.py` | SQLite parameterized, WAL, satu koneksi berkunci |
+| Laporan | `dashboard/.../reports/*` | Satu model → PDF (ReportLab) dan Excel (openpyxl) |
+| UI | `dashboard/web/*`, `ui/bridge.py` | HTML/CSS/JS tanpa framework ([ADR-0005](adr/0005-ui-design-system.md)); jembatan Eel↔asyncio |
 
-Dependency injection sederhana: transport menerima `ServerEvents` /
-callback (`on_ruleset`, `on_command`, `metrics_provider`, dst.) sehingga domain
-dan penyimpanan dapat diganti dengan *fake* dalam test.
+## 3. Protokol
 
-## 3. Protokol pesan
+Setiap pesan adalah satu `Envelope` JSON `{v, id, ts, token, payload}`.
+`payload` adalah *discriminated union* atas `type`. Pesan rusak, kelebihan
+field, terlalu besar, atau versi tak dikenal **ditolak di batas**, tidak pernah
+membuat crash.
 
-Setiap pesan adalah satu `Envelope` JSON:
+- Agent → dashboard: `hello`, `heartbeat`, `violation`, `screen_frame`, `ack`, `goodbye`.
+- Dashboard → agent: `welcome`, `reject`, `rules_update`, `command`.
 
-```jsonc
-{
-  "v": 1,                      // versi protokol; peer menolak versi tak dikenal
-  "id": "<uuid hex>",          // unik — korelasi ACK & deteksi replay
-  "ts": 1696200000.0,          // epoch detik — jendela anti-replay
-  "token": "<pairing token>",  // diverifikasi transport, TIDAK PERNAH di-log
-  "payload": { "type": "...", ... }
-}
-```
+`heartbeat` membawa status nyata agent (bukan tombol terakhir yang ditekan),
+`indicator_visible` (ikon peserta tampil?) dan `desktop_access` (layanan bisa
+melihat desktop?).
 
-`payload` adalah *discriminated union* pydantic atas field `type`. Pesan yang
-rusak, kelebihan field, oversize, atau salah bentuk **ditolak di batas** (drop),
-tidak pernah membuat crash. Skema diekspor ke
-`shared/schema/protocol.v1.schema.json` (lihat `scripts/export_schema.py`).
+### Pemasangan (pairing)
 
-Tipe pesan:
+1. Admin membaca **kode 6 digit** di dashboard (halaman Aturan).
+2. Installer menjalankan `labsentinel-agent --pair KODE --pair-only`; `hello`
+   membawa kode, tanpa token.
+3. Dashboard memeriksa: pendaftaran terbuka? kode cocok (constant-time)? alamat
+   sumber tidak terkunci (5 salah → kunci 15 menit)? Lalu menerbitkan **token
+   acak per-PC**, menyimpan **hash**-nya, mengirimnya sekali di `welcome`.
+4. Agent menyimpan token (atomik; ACL SYSTEM+Administrators). Sejak itu hanya
+   token itu yang dipakai; kode tidak dibutuhkan lagi.
 
-- **Agent → Dashboard:** `hello`, `heartbeat`, `violation`, `screen_frame`,
-  `ack`, `goodbye`.
-- **Dashboard → Agent:** `welcome`, `reject`, `rules_update`, `command`.
-
-### Handshake & pairing
-
-1. Agent connect → kirim `hello` (berisi token, agent_id, hostname, revisi
-   aturan yang di-cache).
-2. Dashboard verifikasi versi protokol, token (constant-time), dan anti-replay.
-   - Gagal → `reject` + tutup.
-   - Sukses → `welcome` (session_id, interval heartbeat, `ruleset` lengkap).
-3. Agent menerapkan ruleset, mulai heartbeat + receive loop.
+Token yang tidak dikenal (dicabut / database diganti) → `reject` "perlu
+dipasangkan ulang"; agent terus mencoba dengan backoff. Kode yang ditolak →
+agent berhenti dan menjelaskan (mencoba ulang hanya akan mengunci PC sendiri).
+Semua percobaan tercatat di catatan aktivitas.
 
 ## 4. Keamanan
 
-- **Autentikasi token** antara agent & dashboard. Dashboard hanya menyimpan
-  **hash SHA-256** token; agent menyimpan token mentah di file terpisah
-  (`token_file`) — tidak ada secret hardcoded.
-- **Anti-replay**: `ReplayGuard` menolak pesan di luar jendela waktu atau yang
-  `id`-nya sudah pernah dilihat (memori dibatasi LRU).
-- **Validasi skema** penuh pada setiap pesan masuk.
-- **Least privilege**: hanya enforcement yang butuh SYSTEM (M4); logika lain
-  berjalan dengan hak minimum.
-- **TLS** (`wss://`) opsional — beacon membawa flag `tls`; sertifikat disiapkan
-  per-lab (M7).
-- Token & blob screenshot **di-redaksi** sebelum masuk log (`Envelope.redacted`).
+- Token per-PC, disimpan sebagai hash SHA-256 di dashboard; token PC satu tidak
+  berlaku untuk PC lain. Kode pairing bukan kredensial tetap.
+- Anti-replay (`ReplayGuard`), validasi skema penuh, batas ukuran pesan.
+- Token, kode pairing, dan blob gambar **diredaksi** sebelum masuk log.
+- Agent terhubung **langsung** ke dashboard (`proxy=None`), tidak lewat proxy
+  sistem sekolah.
+- Kanal loopback: helper tray memakai token yang bisa dibaca pengguna dan
+  **tidak punya wewenang** apa pun; desktop worker memakai token yang hanya bisa
+  dibaca SYSTEM/Administrators.
+- **Tidak ada TLS**: lalu lintas LAN berupa teks biasa. Lihat
+  [limitations.md](limitations.md) untuk dampak dan mitigasinya.
 
-## 5. Keandalan
+## 5. Anti-tamper dan keandalan
 
-- **Auto-reconnect** dengan exponential backoff + jitter (`BackoffPolicy`).
-- **Rule cache** persisten & atomik (`RuleCache`): agent tetap menegakkan
-  aturan terakhir saat terputus, dan memulihkannya saat restart; file korup
-  diabaikan tanpa crash.
-- Server mengisolasi error per-koneksi: satu koneksi buruk tidak menjatuhkan
-  server.
-- Logging terstruktur (key=value) dengan rotasi.
+| Mekanisme | Di mana | Efek |
+|---|---|---|
+| Windows Service, auto-start, LocalSystem | `service.py` | Berjalan sebelum login; peserta tidak bisa menghentikannya |
+| Recovery actions (5 s, 5 s, 30 s; juga pada exit ≠ 0) | `service.py` | Proses yang dibunuh/crash hidup lagi |
+| Run marker | `lifecycle.RunMarker` | Start berikutnya melaporkan: dihentikan paksa / listrik padam / layanan dihentikan manual / dimulai ulang watchdog |
+| Watchdog loop | `lifecycle.LoopWatchdog` | Agent macet keluar sendiri (kode 70) agar di-restart |
+| Satu instans | `lifecycle.InstanceLock` | Salinan kedua menolak berjalan |
+| Supervisor worker & tray | `desktop/spawn.py` | Worker selalu ada di sesi konsol; indikator dinyalakan lagi bila hilang |
+| Run key tray + pemulihan | `autostart.py` | Indikator muncul di setiap login; entri yang dihapus dipulihkan |
+| Kebijakan browser selalu dipulihkan | `app.shutdown`, `policy/*` | Berhenti normal, mati paksa, atau crash: kebijakan institusi kembali utuh |
+| Rule cache atomik | `rule_cache.py` | Aturan terakhir tetap ditegakkan saat dashboard tak terjangkau |
+| Reconnect dengan backoff + jitter | `transport/client.py` | 40 PC tidak menyerbu dashboard bersamaan |
 
-## 6. Privasi & data yang dikirim
+## 6. Privasi
 
-Data yang dikirim agent: identitas PC (id, hostname, username login), state &
-metrik ringan (CPU%, RAM, judul jendela aktif), pelanggaran, dan frame layar
-**hanya** saat pemantauan aktif dan ada yang melihat. Tidak ada ketikan, audio,
-atau video kamera. Retensi otomatis (`retention_days`) menghapus data lama.
+Yang dikirim agent: identitas PC, status & metrik ringan, judul jendela aktif,
+pelanggaran (+ satu tangkapan layar bukti), dan frame layar **hanya** saat
+pemantauan aktif dan ada yang melihat di dashboard. **Tidak ada** ketikan,
+suara, atau kamera — tidak ada kodenya sama sekali. Peserta selalu melihat
+indikator. Data lama dihapus otomatis (`retention_days`, default 30 hari).
 
 ## 7. Model threading
 
-- Dashboard: UI Eel/gevent di thread utama; WS server asyncio di thread
-  terpisah dengan loop-nya sendiri. Jembatan antar-keduanya memakai antrian
-  thread-safe (M5).
-- Agent: loop asyncio untuk transport; pekerjaan berat (hash, screenshot) di
-  executor/thread agar tidak memblokir heartbeat (M2+).
+- **Dashboard**: Eel/gevent di thread utama; asyncio (server agent, beacon,
+  watchdog, sesi, retensi) di thread `ls-agents`. Dijembatani `UiBridge`:
+  UI→domain lewat `run_coroutine_threadsafe`, domain→UI lewat buffer event yang
+  di-*poll*. Laporan dibuat di thread UI.
+- **Layanan agent**: satu loop asyncio (transport, deteksi, streaming, judul,
+  supervisor); pekerjaan berat di executor. `DesktopProxy` punya thread+loop
+  sendiri agar panggilan sinkron dari loop utama tidak deadlock. Watchdog di
+  thread daemon.
+- **Desktop worker**: satu loop asyncio; setiap operasi desktop di thread.
 
-## 8. Yang belum dibangun (per M1)
+## 8. Data
 
-Enforcement, tray, screenshot, kebijakan registry, UI, penyimpanan, service,
-dan watchdog menyusul di M2–M7 sesuai urutan di [README](../README.md). Hal-hal
-yang butuh Windows nyata + admin diverifikasi lewat
-[checklist uji manual](manual-test-checklist.md).
+Dashboard (`C:\ProgramData\LabSentinel\dashboard\`): `labsentinel.sqlite`
+(PC, token-hash, pelanggaran, perintah, sesi, aturan, catatan aktivitas,
+pengaturan), `screenshots\<tanggal>\*.jpg`, `reports\*.pdf|xlsx`, `logs\`.
+
+Agent (`C:\ProgramData\LabSentinel\agent\`): `agent_id`, `token` (ACL
+SYSTEM+Admin), `ruleset.json` (cache), `policy_backup.json` (hanya saat
+kebijakan terpasang), `running.json` (run marker), `agent.lock`,
+`desktop_endpoint`/`desktop_token`, `tray_endpoint`/`tray_token`, `logs\`.
+Log helper tray ada di `%LOCALAPPDATA%\LabSentinel\` tiap pengguna.
+
+## 9. Packaging dan deploy
+
+`packaging/build.py` membangun dua folder PyInstaller (agent: tiga exe berbagi
+satu runtime; dashboard: exe + aset UI) dan, di Windows, dua installer Inno
+Setup. Lihat [deploy-guide.md](deploy-guide.md) dan
+[admin-guide.md](admin-guide.md).
+
+## 10. Strategi pengujian
+
+- Unit & integrasi (pytest, ~410 test) berjalan di Linux maupun Windows:
+  transport lewat socket sungguhan, pairing lewat WebSocket sungguhan, agent
+  utuh melawan dashboard sungguhan, proses agent nyata dibunuh `SIGKILL`,
+  laporan PDF/Excel dibaca balik, worker desktop lewat loopback.
+- Akses Windows (WMI, registry HKLM, Chrome/Edge asli, layanan, sesi pengguna)
+  di-*mock* di test dan diverifikasi lewat
+  [manual-test-checklist.md](manual-test-checklist.md).
+- `ruff` dan `mypy --strict` (diperiksa dengan `--platform win32`).

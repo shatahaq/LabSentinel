@@ -44,18 +44,29 @@ class PollingProcessSource:
         self._stop = True
 
     async def watch_new_processes(self, on_start: ProcessStartCallback) -> None:
+        """Report new processes, and processes whose window just appeared.
+
+        The safety gate only acts on processes with a visible window, and many
+        programs (launchers, games) show theirs seconds after they start. Such
+        a process is seen first without a window and left alone; it is reported
+        again the moment its window appears, so it is not missed for good.
+        """
         # Prime with processes already running, so we only report *new* ones.
-        seen: set[int] = {p.pid for p in self._safe_snapshot()}
+        primed = self._safe_snapshot()
+        seen: set[int] = {p.pid for p in primed}
+        windowed: set[int] = {p.pid for p in primed if p.has_visible_window}
         while not self._stop:
             await self._sleep(self._interval)
             if self._stop:
                 break
             current = self._safe_snapshot()
-            current_pids = {p.pid for p in current}
             for proc in current:
-                if proc.pid not in seen:
+                new = proc.pid not in seen
+                window_appeared = proc.has_visible_window and proc.pid not in windowed
+                if new or window_appeared:
                     await self._safe_notify(on_start, proc)
-            seen = current_pids
+            seen = {p.pid for p in current}
+            windowed = {p.pid for p in current if p.has_visible_window}
 
     def _safe_snapshot(self) -> list[ProcessInfo]:
         try:

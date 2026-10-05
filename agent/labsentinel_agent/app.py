@@ -8,8 +8,9 @@ What it starts, in order:
 1. **Recovery** — restore any browser policy left behind by an abnormal exit,
    before touching anything else.
 2. **Tray bridge** — so the participant can see monitoring status immediately.
-3. **Enforcement** — safety gate, whitelist matcher, process detection (WMI
-   events where available, polling otherwise).
+3. **Enforcement** — safety gate, whitelist matcher, process detection by
+   polling (every ``poll_fallback_interval_s``, default 3 s). The WMI event
+   source in platform/win_detector.py exists but is not wired in.
 4. **Transport** — find the dashboard by UDP broadcast (or a configured URL)
    and keep the connection alive.
 
