@@ -124,7 +124,10 @@ def test_spawn_constants_match_pywin32() -> None:
     assert spawn.TOKEN_DUPLICATE == ntsecuritycon.TOKEN_DUPLICATE
     assert spawn.TOKEN_QUERY == ntsecuritycon.TOKEN_QUERY
     assert spawn.TOKEN_ADJUST_DEFAULT == ntsecuritycon.TOKEN_ADJUST_DEFAULT
-    assert spawn.TOKEN_ALL_ACCESS == ntsecuritycon.TOKEN_ALL_ACCESS
+    # pywin32 keeps the pre-Windows 2000 value, without TOKEN_ADJUST_SESSIONID;
+    # today's winnt.h includes it (0xF01FF).
+    assert spawn.TOKEN_ALL_ACCESS == (ntsecuritycon.TOKEN_ALL_ACCESS
+                                      | spawn.TOKEN_ADJUST_SESSIONID)
     assert win32security.TokenSessionId == spawn.TOKEN_SESSION_ID_CLASS
     assert win32security.SecurityImpersonation == spawn.SECURITY_IMPERSONATION
     assert win32security.TokenPrimary == spawn.TOKEN_PRIMARY
