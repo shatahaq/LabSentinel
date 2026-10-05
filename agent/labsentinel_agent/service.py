@@ -54,6 +54,7 @@ RESET_FAILURES_AFTER_S = 86_400
 STOP_TIMEOUT_S = 25.0  # the SCM waits ~30 s by default before giving up on us
 # Exit codes a restart cannot fix (see app.EXIT_*): not paired, pairing refused.
 NO_RESTART_EXIT_CODES = frozenset({2, 3})
+ERROR_SERVICE_EXISTS = 1073
 
 
 class _Agent(Protocol):
@@ -153,8 +154,9 @@ def _make_agent() -> Any:
 
 def _config_path() -> Path | None:
     """agent.toml next to the installed executable, else the defaults."""
-    candidate = Path(sys.executable).with_name("agent.toml")
-    return candidate if candidate.exists() else None
+    from labsentinel_agent.app import default_config_path
+
+    return default_config_path()
 
 
 # ------------------------------------------------------------- Windows glue
@@ -231,14 +233,20 @@ def install() -> None:  # pragma: no cover - Windows only
     from labsentinel_shared.config import load_agent_config
 
     frozen = getattr(sys, "frozen", False)
-    win32serviceutil.InstallService(
-        None if frozen else win32serviceutil.GetServiceClassString(LabSentinelService),
-        SERVICE_NAME,
-        DISPLAY_NAME,
-        startType=win32service.SERVICE_AUTO_START,
-        exeName=sys.executable if frozen else None,
-        description=DESCRIPTION,
-    )
+    try:
+        win32serviceutil.InstallService(
+            None if frozen else win32serviceutil.GetServiceClassString(LabSentinelService),
+            SERVICE_NAME,
+            DISPLAY_NAME,
+            startType=win32service.SERVICE_AUTO_START,
+            exeName=sys.executable if frozen else None,
+            description=DESCRIPTION,
+        )
+    except Exception as exc:
+        if getattr(exc, "winerror", None) != ERROR_SERVICE_EXISTS:
+            raise
+        # Upgrade / re-run: keep the service, refresh its settings below.
+        log.info("service already installed; updating its configuration")
     scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
     try:
         svc = win32service.OpenService(scm, SERVICE_NAME, win32service.SERVICE_ALL_ACCESS)

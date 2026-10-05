@@ -553,6 +553,19 @@ def _current_user() -> str:
 
 
 # ------------------------------------------------------------------- main
+def default_config_path() -> Path | None:
+    """agent.toml next to an installed executable, if there is one.
+
+    The service, the tray helper and the command line all read the same file,
+    so an installation is configured in exactly one place.
+    """
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).with_name("agent.toml")
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _stop_on_signals(task: asyncio.Task[Any] | None) -> None:
     """Turn termination signals into a normal shutdown (policy restored).
 
@@ -597,7 +610,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-level", default=None, help="DEBUG, INFO, WARNING, ERROR.")
     args = parser.parse_args(argv)
 
-    config = load_agent_config(args.config)
+    config = load_agent_config(args.config or default_config_path())
     if args.dashboard:
         config = config.model_copy(update={"direct_url": args.dashboard})
     setup_logging(log_path=config.log_path, level=args.log_level or config.log_level)
@@ -605,6 +618,10 @@ def main(argv: list[str] | None = None) -> int:
     if not _IS_WINDOWS:
         log.warning("Lab Sentinel enforcement is Windows-only; running in a limited mode")
 
+    if args.pair_only and not args.pair and sys.stdin and sys.stdin.isatty():
+        # "Pasangkan ulang PC ini" from a console: ask instead of failing.
+        with contextlib.suppress(EOFError, KeyboardInterrupt):
+            args.pair = input("Kode pemasangan 6 digit dari dashboard: ").strip() or None
     agent = LabSentinelAgent(config, pairing_code=args.pair, pair_only=args.pair_only)
 
     async def runner() -> int:
