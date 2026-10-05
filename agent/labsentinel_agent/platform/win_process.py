@@ -23,10 +23,16 @@ log = logging.getLogger("labsentinel.agent.platform")
 _IS_WINDOWS = sys.platform == "win32"
 
 if _IS_WINDOWS:
+    import win32api
     import win32con
     import win32gui
     import win32process
+    import win32security
     import win32ts
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION_CLASS = 20  # TOKEN_INFORMATION_CLASS.TokenElevation
 
 
 def _active_console_session() -> int:
@@ -45,6 +51,28 @@ def _session_of(pid: int) -> int | None:
         return int(win32ts.ProcessIdToSessionId(pid))
     except Exception:
         return None
+
+
+def is_elevated(pid: int) -> bool:
+    """True when ``pid`` runs with administrator rights (an elevated token).
+
+    False when it cannot be told (process gone, access denied): the other
+    checks still decide, so an unknown never protects a participant's app.
+    """
+    if not _IS_WINDOWS:
+        return False
+    try:
+        handle = win32api.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        try:
+            token = win32security.OpenProcessToken(handle, TOKEN_QUERY)
+            try:
+                return bool(win32security.GetTokenInformation(token, TOKEN_ELEVATION_CLASS))
+            finally:
+                win32api.CloseHandle(token)
+        finally:
+            win32api.CloseHandle(handle)
+    except Exception:
+        return False
 
 
 # When the agent runs as a service (session 0), it cannot see the user's
@@ -169,6 +197,9 @@ def _make_info(
         has_visible_window=pid in window_index,
         window_title=window_index.get(pid, ""),
         is_current_user=is_current,
+        # Only asked for the participant's own processes: the rest are out of
+        # scope anyway, and this saves a token query per system process.
+        elevated=is_current and is_elevated(pid),
     )
 
 

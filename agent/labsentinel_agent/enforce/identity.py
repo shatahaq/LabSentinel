@@ -41,6 +41,10 @@ class ProcessInfo:
     has_visible_window: bool = False
     window_title: str = ""
     is_current_user: bool = False  # owned by the logged-in interactive user
+    # Running with administrator rights (UAC elevated). A participant cannot
+    # start one, so it is the supervisor's or technician's: an installer, an
+    # uninstaller, an admin tool.
+    elevated: bool = False
 
     def normalized_owner(self) -> str:
         return (self.username or "").strip().lower()

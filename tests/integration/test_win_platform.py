@@ -153,3 +153,19 @@ def test_own_token_can_be_opened_with_the_rights_spawn_asks_for() -> None:
     dup = win32security.DuplicateTokenEx(own, SECURITY_IMPERSONATION, TOKEN_ALL_ACCESS,
                                          TOKEN_PRIMARY, None)
     assert dup
+
+
+def test_elevation_of_this_process_is_read() -> None:
+    """is_elevated agrees with Windows' own answer for the test process."""
+    import ctypes
+
+    from labsentinel_agent.platform.win_process import is_elevated
+
+    admin = bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+    assert is_elevated(os.getpid()) is admin
+
+
+def test_elevation_of_a_missing_process_is_false() -> None:
+    from labsentinel_agent.platform.win_process import is_elevated
+
+    assert is_elevated(0x7FFFFFF0) is False
