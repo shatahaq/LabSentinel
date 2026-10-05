@@ -54,6 +54,11 @@ Administrator) lewat [manual-test-checklist.md](manual-test-checklist.md):
   ~3 detik sebelum terdeteksi, ditambah jeda peringatan sebelum ditutup.
   *Safety gate* hanya menindak proses yang jendelanya terlihat; aplikasi yang
   jendelanya muncul belakangan diperiksa lagi saat jendela itu muncul.
+- **Aplikasi yang berjalan dengan hak administrator tidak pernah ditindak**
+  (installer, uninstaller, alat admin). Peserta tanpa hak admin tidak bisa
+  memulainya. Kalau akun peserta ternyata administrator, pengawasan bisa
+  dilewati dengan "Run as administrator", jadi akun peserta **harus** akun
+  standar.
 - **Pelanggaran saat agent tidak terhubung tidak diantrikan.** Penegakan tetap
   berjalan dengan aturan tersimpan, tetapi catatannya hilang (kecuali laporan
   "agent dihentikan tidak wajar", yang dikirim begitu tersambung).
