@@ -68,6 +68,8 @@ jobs:
   e2e:
     needs: build
     runs-on: windows-latest
+    permissions:
+      contents: write  # only to publish screenshots when a commit asks for it
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -177,6 +179,19 @@ jobs:
       - name: Screenshots into the log
         if: always()
         run: python packaging/ci/emit_images.py shots
+      - name: Publish screenshots to docs/screenshots/windows
+        # Only when the pushed commit asks for it with "[screenshots]"; the
+        # commit made here carries [skip ci] so it does not start another run.
+        if: success() && contains(github.event.head_commit.message, '[screenshots]')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force docs\screenshots\windows | Out-Null
+          Copy-Item shots\*.png docs\screenshots\windows\ -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/windows
+          git commit -m "Screenshots from the Windows end-to-end run [skip ci]" -m "Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          git push origin HEAD:$env:GITHUB_REF_NAME
       - name: Collect logs
         if: always()
         shell: pwsh
