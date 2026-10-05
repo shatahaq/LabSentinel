@@ -172,3 +172,53 @@ async def test_repair_after_dashboard_reset(
     async with _agent(config, pairing.code):
         await events.until(lambda: len(events.connected) == 1)
     assert read_token(config) not in (None, "token-from-before-the-reset")
+
+
+# ------------------------------------------------------------- --pair-only
+async def test_pair_only_pairs_and_exits_without_enforcing(
+    dashboard: tuple[str, PairingService, Events], tmp_path: Path, db: Database,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    url, pairing, _events = dashboard
+    config = _config(tmp_path, url)
+    agent = LabSentinelAgent(config, pairing_code=pairing.code, pair_only=True)
+    try:
+        code = await asyncio.wait_for(agent.run(), timeout=15)
+    finally:
+        await agent.shutdown()
+    assert code == app_mod.EXIT_OK
+    assert read_token(config) is not None
+    assert db.get_agent_token_hash(agent.agent_id) is not None
+    # Installer step only: no tray endpoint, no run marker, no cached rules.
+    for leftover in ("tray_endpoint", "running.json", "ruleset.json"):
+        assert not (config.data_dir / leftover).exists(), leftover
+    assert "berhasil dipasangkan" in capsys.readouterr().out
+
+
+async def test_pair_only_with_wrong_code(
+    dashboard: tuple[str, PairingService, Events], tmp_path: Path
+) -> None:
+    url, pairing, _events = dashboard
+    wrong = "100000" if pairing.code != "100000" else "100001"
+    agent = LabSentinelAgent(_config(tmp_path, url), pairing_code=wrong, pair_only=True)
+    try:
+        assert await asyncio.wait_for(agent.run(), timeout=15) == EXIT_PAIRING_REJECTED
+    finally:
+        await agent.shutdown()
+
+
+async def test_pair_only_without_a_dashboard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+
+    with socket.socket() as s:  # a port nobody listens on
+        s.bind(("127.0.0.1", 0))
+        dead = f"ws://127.0.0.1:{s.getsockname()[1]}"
+    monkeypatch.setattr(app_mod, "PAIR_ONLY_TIMEOUT_S", 1.0)
+    agent = LabSentinelAgent(_config(tmp_path, dead), pairing_code="123456", pair_only=True)
+    try:
+        assert await asyncio.wait_for(agent.run(), timeout=15) == app_mod.EXIT_NO_DASHBOARD
+    finally:
+        await agent.shutdown()
+    assert "Dashboard tidak ditemukan" in capsys.readouterr().out

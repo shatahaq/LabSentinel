@@ -28,10 +28,13 @@ import asyncio
 import contextlib
 import logging
 import platform
+import signal
 import socket
 import sys
+import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from labsentinel_agent.capture.screenshot import MssScreenshotCapturer
 from labsentinel_agent.capture.streamer import ScreenStreamer
@@ -43,14 +46,20 @@ from labsentinel_agent.enforce.matcher import WhitelistMatcher
 from labsentinel_agent.enforce.ports import ProcessController
 from labsentinel_agent.enforce.safety import SafetyPolicy
 from labsentinel_agent.enforce.title_watch import TitleHit, TitleWatcher
+from labsentinel_agent.lifecycle import InstanceLock, LoopWatchdog, PreviousRun, RunMarker
 from labsentinel_agent.policy.browser_policy import BrowserPolicyManager
 from labsentinel_agent.policy.registry import RegistryPort
 from labsentinel_agent.rule_cache import RuleCache
-from labsentinel_agent.transport.client import AgentIdentity, BackoffPolicy, DashboardClient
+from labsentinel_agent.transport.client import (
+    AgentIdentity,
+    BackoffPolicy,
+    CommandResult,
+    DashboardClient,
+)
 from labsentinel_agent.tray.bridge import TrayBridge
 from labsentinel_shared.config import AgentConfig, load_agent_config
 from labsentinel_shared.discovery import discover_dashboard
-from labsentinel_shared.enums import AgentState
+from labsentinel_shared.enums import AgentState, ViolationKind
 from labsentinel_shared.logging_setup import setup_logging
 from labsentinel_shared.rules import RuleSet
 
@@ -63,6 +72,12 @@ _IS_WINDOWS = sys.platform == "win32"
 EXIT_OK = 0
 EXIT_NOT_PAIRED = 2
 EXIT_PAIRING_REJECTED = 3
+EXIT_ALREADY_RUNNING = 4
+EXIT_NO_DASHBOARD = 5
+
+PAIR_ONLY_TIMEOUT_S = 60.0
+
+MARKER_TOUCH_S = 15.0
 
 NOT_PAIRED_MESSAGE = (
     "\nPC ini belum dipasangkan.\n"
@@ -97,12 +112,13 @@ def read_token(config: AgentConfig) -> str | None:
 def store_token(config: AgentConfig, token: str) -> None:
     """Persist this PC's credential atomically and readable by its owner only.
 
-    mkstemp creates the file 0600 on POSIX. On Windows the folder ACL decides
-    who can read it; the installer restricts the agent's data folder to
-    SYSTEM and Administrators (see docs/admin-guide.md).
+    mkstemp creates the file 0600 on POSIX. On Windows mode bits do not
+    apply, so the file's ACL is set to SYSTEM and Administrators only.
     """
     import os
     import tempfile
+
+    from labsentinel_agent.platform.acl import restrict_to_admins
 
     path = config.token_file
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -115,13 +131,17 @@ def store_token(config: AgentConfig, token: str) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+    restrict_to_admins(path)  # Windows: ACL, since mode bits do not apply
 
 
 # ---------------------------------------------------------------- the agent
 class LabSentinelAgent:
-    def __init__(self, config: AgentConfig, *, pairing_code: str | None = None) -> None:
+    def __init__(
+        self, config: AgentConfig, *, pairing_code: str | None = None, pair_only: bool = False
+    ) -> None:
         self.config = config
         self.pairing_code = pairing_code
+        self.pair_only = pair_only
         self.agent_id = stable_agent_id(config)
         self.runtime = RuntimeState(state=AgentState.ENFORCING)
         self.cache = RuleCache(config.rule_cache_path)
@@ -177,13 +197,38 @@ class LabSentinelAgent:
         )
         self.client: DashboardClient | None = None
 
+        # Anti-tamper (see lifecycle.py): one instance per PC, a marker that
+        # reveals an abnormal end of the previous run, and a loop watchdog.
+        self.instance_lock = InstanceLock(config.data_dir / "agent.lock")
+        self.marker = RunMarker(config.data_dir / "running.json")
+        self.watchdog = LoopWatchdog()
+        self.previous_run: PreviousRun | None = None
+        # Why we are stopping, kept for the next start ("" = a normal stop).
+        self.stop_reason = ""
+        self._another_instance = False
+        self._started = False
+
     # ------------------------------------------------------------ lifecycle
     async def run(self) -> int:
         """Run until stopped or until pairing fails. Returns a process exit code."""
+        if not self.instance_lock.acquire():
+            # Two agents with one identity would keep replacing each other's
+            # connection on the dashboard. Leave the running one alone.
+            self._another_instance = True
+            log.error("another Lab Sentinel agent is already running on this PC")
+            print("\nAgent Lab Sentinel sudah berjalan di PC ini.\n")
+            return EXIT_ALREADY_RUNNING
+        if self.pair_only:
+            return await self._pair_only()
+        self._started = True
+
         # A leftover policy backup means the last run ended abnormally; put the
         # machine back the way we found it before doing anything else.
         if self.policy.recover_if_needed():
             log.warning("restored browser policy left behind by a previous run")
+        self.previous_run = self.marker.begin()
+        if self.previous_run is not None:
+            log.warning("previous run did not end normally: %s", self.previous_run.describe())
 
         cached = self.cache.load()
         if cached is not None:
@@ -206,13 +251,7 @@ class LabSentinelAgent:
             return EXIT_NOT_PAIRED
 
         self.client = DashboardClient(
-            identity=AgentIdentity(
-                agent_id=self.agent_id,
-                hostname=socket.gethostname(),
-                username=_current_user(),
-                agent_version=AGENT_VERSION,
-                os_version=platform.platform(terse=True),
-            ),
+            identity=self._identity(),
             token=token,
             pairing_code=self.pairing_code,
             on_token_issued=self._on_token_issued,
@@ -231,6 +270,7 @@ class LabSentinelAgent:
 
         await self.core.sweep_running()
 
+        self.watchdog.start()
         link = asyncio.ensure_future(self.client.run(self._find_dashboard))
         tasks = [
             link,
@@ -238,7 +278,11 @@ class LabSentinelAgent:
             asyncio.ensure_future(self.streamer.run()),
             asyncio.ensure_future(self.titles.run()),
             asyncio.ensure_future(self._watch_connection()),
+            asyncio.ensure_future(self.watchdog.run_beats()),
+            asyncio.ensure_future(self._keep_marker_fresh()),
         ]
+        if self.previous_run is not None:
+            tasks.append(asyncio.ensure_future(self._report_previous_run(self.previous_run)))
         try:
             pending = set(tasks)
             while pending:
@@ -260,10 +304,97 @@ class LabSentinelAgent:
             return EXIT_PAIRING_REJECTED
         return EXIT_OK
 
+    def _identity(self) -> AgentIdentity:
+        return AgentIdentity(
+            agent_id=self.agent_id,
+            hostname=socket.gethostname(),
+            username=_current_user(),
+            agent_version=AGENT_VERSION,
+            os_version=platform.platform(terse=True),
+        )
+
+    async def _pair_only(self) -> int:
+        """Pair, store the token, and exit. Used by the installer.
+
+        Nothing is enforced and no rules are applied: this is the one-off step
+        before the service is installed, typically run by an administrator.
+        """
+        if not self.pairing_code:
+            print(NOT_PAIRED_MESSAGE)
+            return EXIT_NOT_PAIRED
+        issued = asyncio.Event()
+
+        def on_issued(token: str) -> None:
+            self._on_token_issued(token)
+            issued.set()
+
+        async def ignore_rules(_ruleset: RuleSet) -> None:
+            return None
+
+        async def refuse_commands(_cmd: Any) -> CommandResult:
+            return CommandResult(resulting_state=AgentState.PAUSED, ok=False,
+                                 message="sedang dipasangkan")
+
+        client = DashboardClient(
+            identity=self._identity(), token=None, pairing_code=self.pairing_code,
+            on_token_issued=on_issued, state_provider=lambda: AgentState.PAUSED,
+            metrics_provider=lambda: (0.0, 0.0, ""), on_ruleset=ignore_rules,
+            on_command=refuse_commands, backoff=BackoffPolicy(base_s=1.0, max_s=5.0),
+        )
+        self.client = client
+        link = asyncio.ensure_future(client.run(self._find_dashboard))
+        waiter = asyncio.ensure_future(issued.wait())
+        try:
+            await asyncio.wait(
+                {link, waiter}, timeout=PAIR_ONLY_TIMEOUT_S,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            waiter.cancel()
+            await client.stop()
+            link.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await link
+        if issued.is_set():
+            return EXIT_OK
+        if client.pairing_rejected:
+            print(f"\nPemasangan ditolak oleh dashboard: {client.pairing_rejected}.\n")
+            return EXIT_PAIRING_REJECTED
+        print(
+            "\nDashboard tidak ditemukan di jaringan. Pastikan dashboard berjalan, "
+            "atau sebutkan alamatnya dengan --dashboard ws://ALAMAT:8765\n"
+        )
+        return EXIT_NO_DASHBOARD
+
     def _on_token_issued(self, token: str) -> None:
         store_token(self.config, token)
         log.info("this PC is now paired; token stored at %s", self.config.token_file)
         print("\nPC ini berhasil dipasangkan. Kode tidak perlu diketik lagi.\n")
+
+    async def _keep_marker_fresh(self) -> None:
+        """Note that we are alive, so an abnormal end can be dated."""
+        while True:
+            await asyncio.sleep(MARKER_TOUCH_S)
+            self.marker.touch()
+
+    async def _report_previous_run(self, previous: PreviousRun) -> None:
+        """Tell the dashboard the agent was stopped abnormally, once connected."""
+        record = ViolationRecord(
+            kind=ViolationKind.AGENT_TAMPER,
+            subject="Agent Lab Sentinel",
+            detail=previous.describe(),
+            pid=previous.pid,
+            dry_run=False,  # a fact about the agent, not an enforcement action
+            acted=False,
+            occurred_at=previous.last_alive or time.time(),
+        )
+        while True:
+            if self.client is not None:
+                await self.client.connected.wait()
+            if await self.core.emit_violation(record):
+                log.info("reported the abnormal end of the previous run")
+                return
+            await asyncio.sleep(2.0)
 
     async def _watch_connection(self) -> None:
         """Keep the participant's indicator honest about connectivity."""
@@ -294,7 +425,10 @@ class LabSentinelAgent:
         browser policy in place, or a lab PC would stay with sites blocked and
         nobody watching.
         """
+        if self._another_instance:
+            return  # the PC belongs to the instance that is already running
         log.info("agent stopping")
+        self.watchdog.stop()
         for step in (self.titles.stop, self.streamer.stop, self.core.stop):
             try:
                 step()
@@ -310,6 +444,11 @@ class LabSentinelAgent:
                 await self.client.stop()
         with contextlib.suppress(Exception):
             await self.tray.stop()
+        if self._started:
+            # Removed on a normal stop; kept with a reason (e.g. the service
+            # was stopped by hand) so the next start can report it.
+            self.marker.end(reason=self.stop_reason)
+        self.instance_lock.release()
 
     # ------------------------------------------------------------- plumbing
     async def _emit_violation(self, record: ViolationRecord) -> None:
@@ -414,6 +553,27 @@ def _current_user() -> str:
 
 
 # ------------------------------------------------------------------- main
+def _stop_on_signals(task: asyncio.Task[Any] | None) -> None:
+    """Turn termination signals into a normal shutdown (policy restored).
+
+    Ctrl+C already arrives as KeyboardInterrupt. This covers ``kill`` on POSIX
+    and Ctrl+Break / console close on Windows. Under the Windows Service the
+    service control handler does this instead (service.py).
+    """
+    if task is None:
+        return
+    loop = asyncio.get_running_loop()
+    if sys.platform == "win32":
+        def _handler(_signum: int, _frame: object) -> None:
+            loop.call_soon_threadsafe(task.cancel)
+
+        with contextlib.suppress(ValueError, OSError, AttributeError):
+            signal.signal(signal.SIGBREAK, _handler)
+        return
+    with contextlib.suppress(NotImplementedError, RuntimeError):
+        loop.add_signal_handler(signal.SIGTERM, task.cancel)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="labsentinel-agent",
@@ -425,6 +585,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="KODE",
         default=None,
         help="Kode 6 digit dari dashboard; hanya diperlukan sekali saat pemasangan.",
+    )
+    parser.add_argument(
+        "--pair-only",
+        action="store_true",
+        help="Hanya pasangkan PC ini lalu keluar (dipakai installer sebelum memasang layanan).",
     )
     parser.add_argument(
         "--dashboard", default=None, help="Alamat dashboard (lewati penemuan otomatis)."
@@ -440,11 +605,14 @@ def main(argv: list[str] | None = None) -> int:
     if not _IS_WINDOWS:
         log.warning("Lab Sentinel enforcement is Windows-only; running in a limited mode")
 
-    agent = LabSentinelAgent(config, pairing_code=args.pair)
+    agent = LabSentinelAgent(config, pairing_code=args.pair, pair_only=args.pair_only)
 
     async def runner() -> int:
+        _stop_on_signals(asyncio.current_task())
         try:
             return await agent.run()
+        except asyncio.CancelledError:
+            return EXIT_OK  # asked to stop (SIGTERM / Ctrl+Break)
         finally:
             await agent.shutdown()
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import threading
 from pathlib import Path
@@ -29,6 +30,19 @@ log = logging.getLogger("labsentinel.agent.tray.main")
 
 def _paths(data_dir: Path) -> tuple[Path, Path]:
     return data_dir / "tray_token", data_dir / "tray_endpoint"
+
+
+def tray_log_path(data_dir: Path) -> Path:
+    """Where this helper logs.
+
+    The helper runs as whoever is logged in, so on Windows it logs to that
+    user's own profile: a shared file in the agent's data folder would be
+    owned by the first participant and unwritable for the next one.
+    """
+    local = os.environ.get("LOCALAPPDATA")
+    if sys.platform == "win32" and local:
+        return Path(local) / "LabSentinel" / "tray.log"
+    return data_dir / "logs" / "tray.log"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,7 +60,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    setup_logging(log_path=args.data_dir / "logs" / "tray.log", level="INFO")
+    try:
+        setup_logging(log_path=tray_log_path(args.data_dir), level="INFO")
+    except OSError:
+        # Never let an unwritable log file take the indicator away.
+        logging.basicConfig(level=logging.INFO)
 
     indicator: TrayIndicator
     if args.headless or sys.platform != "win32":

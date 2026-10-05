@@ -207,9 +207,10 @@ class AgentCore:
             log.warning("could not update participant indicator", exc_info=True)
 
     # -- violation emission -------------------------------------------------
-    async def emit_violation(self, rec: ViolationRecord) -> None:
+    async def emit_violation(self, rec: ViolationRecord) -> bool:
+        """Send a violation to the dashboard. Returns False if it was not sent."""
         if self._client is None:
-            return
+            return False
         payload = ViolationPayload(
             agent_id=self._client.agent_id,
             kind=rec.kind,
@@ -227,6 +228,7 @@ class AgentCore:
         sent = await self._client.send_event(payload)
         if not sent:
             log.info("violation %s not sent (offline); kept enforcing locally", rec.subject)
+        return sent
 
     # -- sweeps -------------------------------------------------------------
     async def sweep_running(self) -> None:

@@ -45,6 +45,8 @@ packaging = ["pyinstaller>=6.0"]
 
 [project.scripts]
 labsentinel-agent = "labsentinel_agent.app:main"
+labsentinel-service = "labsentinel_agent.service:main"
+labsentinel-tray = "labsentinel_agent.tray.__main__:main"
 labsentinel-dashboard = "labsentinel_dashboard.app:main"
 
 [build-system]

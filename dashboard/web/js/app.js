@@ -106,7 +106,11 @@
     for (const ev of res.events) {
       if (ev.topic === "violation.new") {
         const v = ev.data;
-        if (v.notify) {
+        if (v.kind === "agent_tamper") {
+          // Always shown, never deduplicated away: it explains a gap in
+          // monitoring (killed, service stopped, or the PC lost power).
+          toast(`${v.hostname}: agent dihentikan tidak wajar`, v.detail, "error");
+        } else if (v.notify) {
           toast(
             `${v.hostname}: ${v.subject}`,
             v.dry_run ? "Tercatat (mode uji coba)" : global.U.violationLabel(v.kind),
