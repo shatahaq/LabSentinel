@@ -131,8 +131,7 @@ class _NoticeWindow:  # pragma: no cover - Windows, draws on the real desktop
             wc.lpfnWndProc = {win32con.WM_PAINT: self._on_paint}
             wc.hbrBackground = win32gui.GetStockObject(win32con.BLACK_BRUSH)
             wc.hCursor = win32gui.LoadCursor(0, win32con.IDC_ARROW)
-            with_ = win32gui  # registration is process-wide, once
-            with_.RegisterClass(wc)
+            win32gui.RegisterClass(wc)  # process-wide, so only once
             _NoticeWindow._registered = True
 
         vw = win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN)
@@ -150,7 +149,7 @@ class _NoticeWindow:  # pragma: no cover - Windows, draws on the real desktop
             win32con.SWP_SHOWWINDOW,
         )
 
-    def _on_paint(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
+    def _on_paint(self, hwnd: int, _msg: int, _wparam: int, _lparam: int) -> int:
         win32gui, win32con = self._win32gui, self._win32con
         hdc, ps = win32gui.BeginPaint(hwnd)
         try:
