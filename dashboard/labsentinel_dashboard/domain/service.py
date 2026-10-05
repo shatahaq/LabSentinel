@@ -280,6 +280,9 @@ class DashboardService:
         view.active_window_title = hb.active_window_title
         view.indicator_visible = hb.indicator_visible
         view.desktop_access = hb.desktop_access
+        if hb.username is not None and hb.username != view.username:
+            view.username = hb.username  # someone signed in or out at that PC
+            self._db.set_agent_username(agent_id, hb.username)
         if throttle_db:
             self._db.touch_agent(agent_id, now)
         self._publish_agent(view)

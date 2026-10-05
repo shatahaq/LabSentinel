@@ -123,6 +123,22 @@ def active_console_session() -> int:
     return int(win32ts.WTSGetActiveConsoleSessionId())
 
 
+def console_user() -> str:
+    """User name signed in at the console session, or "" when nobody is."""
+    if sys.platform != "win32":
+        return ""
+    session = active_console_session()
+    if session == NO_SESSION:
+        return ""
+    try:
+        import win32ts
+
+        return str(win32ts.WTSQuerySessionInformation(
+            win32ts.WTS_CURRENT_SERVER_HANDLE, session, win32ts.WTSUserName) or "")
+    except Exception:  # pywin32 error: no user, session going away
+        return ""
+
+
 def spawn_as_user(session_id: int, command: str) -> bool:  # pragma: no cover - Windows
     """Start ``command`` as the user logged in to ``session_id`` (the tray helper).
 

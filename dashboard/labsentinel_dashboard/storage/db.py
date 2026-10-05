@@ -225,6 +225,10 @@ class Database:
         with self._tx() as c:
             c.execute("UPDATE agents SET last_seen = ? WHERE agent_id = ?", (ts, agent_id))
 
+    def set_agent_username(self, agent_id: str, username: str) -> None:
+        with self._tx() as c:
+            c.execute("UPDATE agents SET username = ? WHERE agent_id = ?", (username, agent_id))
+
     def set_agent_group(self, agent_id: str, group_name: str) -> None:
         with self._tx() as c:
             c.execute(

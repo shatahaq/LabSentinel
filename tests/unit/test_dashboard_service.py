@@ -160,6 +160,26 @@ async def test_lost_desktop_access_is_shown_to_the_supervisor(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_signed_in_participant_replaces_the_service_account(tmp_path: Path) -> None:
+    db, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")  # HELLO from a service: no one signed in yet
+
+    def hb(username: str | None) -> HeartbeatPayload:
+        return HeartbeatPayload(agent_id="pc-01", state=AgentState.ENFORCING,
+                                rule_revision=1, username=username)
+
+    await svc.on_heartbeat("pc-01", hb("budi"))
+    assert svc.agent("pc-01").username == "budi"
+    assert db.list_agents()[0]["username"] == "budi"
+    await svc.on_heartbeat("pc-01", hb(""))  # signed out
+    assert svc.agent("pc-01").username == ""
+    await svc.on_heartbeat("pc-01", hb("sari"))
+    await svc.on_heartbeat("pc-01", hb(None))  # an older agent says nothing: keep it
+    assert svc.agent("pc-01").username == "sari"
+    assert db.list_agents()[0]["username"] == "sari"
+
+
+@pytest.mark.asyncio
 async def test_disconnect_clean_vs_dropped(tmp_path: Path) -> None:
     _, _, _, svc, link, _ = _build(tmp_path)
     await _connect(svc, link, "pc-01")

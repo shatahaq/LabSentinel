@@ -119,6 +119,7 @@ def _make_client(
         on_ruleset=on_ruleset,
         on_command=on_command,
         cached_revision_provider=lambda: 3,
+        username_provider=lambda: "budi",
         heartbeat_interval_s=hb_interval,
         backoff=BackoffPolicy(base_s=0.1, max_s=0.3, jitter_s=0.0),
     )
@@ -159,6 +160,7 @@ async def test_full_m1_flow() -> None:
         await events.wait_hb()
         assert events.heartbeats[0].state is AgentState.ENFORCING
         assert events.heartbeats[0].cpu_percent == pytest.approx(1.5)
+        assert events.heartbeats[0].username == "budi"  # who is signed in now
 
         # --- live rule update dashboard -> agent ---
         await session.send_ruleset(RuleSet(revision=11, dry_run=False))

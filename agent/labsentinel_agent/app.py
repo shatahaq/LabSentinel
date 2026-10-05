@@ -42,6 +42,7 @@ from labsentinel_agent.capture.streamer import ScreenStreamer
 from labsentinel_agent.core import AgentCore, RuntimeState, _Detector
 from labsentinel_agent.desktop.access import DesktopAccess, DesktopCapturer
 from labsentinel_agent.desktop.proxy import DesktopProxy
+from labsentinel_agent.desktop.spawn import console_user
 from labsentinel_agent.enforce.detector import PollingProcessSource
 from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
@@ -304,6 +305,7 @@ class LabSentinelAgent:
             desktop_access_provider=lambda: self.desktop.available(
                 someone_logged_in=self._someone_logged_in()
             ),
+            username_provider=self._username,
             heartbeat_interval_s=self.config.heartbeat_interval_s,
             backoff=BackoffPolicy(),
         )
@@ -349,11 +351,17 @@ class LabSentinelAgent:
             return EXIT_PAIRING_REJECTED
         return EXIT_OK
 
+    def _username(self) -> str:
+        """The participant: who is signed in at the console, not the service's SYSTEM."""
+        if self.service_mode:
+            return console_user()
+        return _current_user()
+
     def _identity(self) -> AgentIdentity:
         return AgentIdentity(
             agent_id=self.agent_id,
             hostname=socket.gethostname(),
-            username=_current_user(),
+            username=self._username(),
             agent_version=AGENT_VERSION,
             os_version=platform.platform(terse=True),
         )
