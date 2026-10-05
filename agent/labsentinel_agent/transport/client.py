@@ -145,7 +145,11 @@ class DashboardClient:
             await self._sleep(delay)
 
     async def _session(self, url: str) -> None:
-        async with websockets.connect(url, max_size=32 * 1024 * 1024) as conn:
+        # proxy=None: the dashboard is always on the lab LAN. websockets >= 15
+        # otherwise follows the system proxy (env vars, and on Windows the
+        # Internet Options setting many schools configure), which would route
+        # a LAN connection out through the school proxy and fail.
+        async with websockets.connect(url, max_size=32 * 1024 * 1024, proxy=None) as conn:
             self._conn = conn
             await self._send(
                 conn,

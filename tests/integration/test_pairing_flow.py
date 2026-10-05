@@ -247,3 +247,22 @@ async def test_token_of_another_pc_is_refused(
         await asyncio.sleep(0.4)
         assert not client.connected.is_set()
     assert events.connected == []
+
+
+async def test_agent_ignores_system_proxy_on_the_lab_lan(
+    server: tuple[WebSocketServer, Events], pairing: PairingService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Schools often set a proxy for the whole machine. The dashboard is on the
+    LAN, so the agent must connect directly instead of through that proxy."""
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy",
+                "all_proxy"):
+        monkeypatch.setenv(var, "http://127.0.0.1:9")  # nothing listens there
+    for var in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+
+    srv, events = server
+    client = _client(token=None, code=pairing.code, issued=[], rulesets=[])
+    async with _running(client, f"ws://127.0.0.1:{srv.bound_port}"):
+        await asyncio.wait_for(client.connected.wait(), timeout=5)
+    assert events.connected == ["lab-pc-07"]

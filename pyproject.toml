@@ -17,12 +17,12 @@ dependencies = [
 [project.optional-dependencies]
 dashboard = [
     "eel>=0.16",
-    "websockets>=12.0",
+    "websockets>=15.0",  # proxy=None (connect directly on the LAN)
     "reportlab>=4.0",
     "openpyxl>=3.1",
 ]
 agent = [
-    "websockets>=12.0",
+    "websockets>=15.0",  # proxy=None (connect directly on the LAN)
     "psutil>=5.9",
     "mss>=9.0",
     "Pillow>=10.0",
