@@ -218,6 +218,7 @@ class LabSentinelAgent:
                 stop=self.detector_source.stop,
             ),
             lock_fn=self.desktop.lock,
+            freeze_fn=self.desktop.freeze,
             notify_fn=self.tray.notify,
             status_sink=lambda state, connected: self.tray.set_status(state, connected=connected),
             policy=self.policy,
@@ -306,6 +307,7 @@ class LabSentinelAgent:
                 someone_logged_in=self._someone_logged_in()
             ),
             username_provider=self._username,
+            input_frozen_provider=self.core.input_frozen,
             heartbeat_interval_s=self.config.heartbeat_interval_s,
             backoff=BackoffPolicy(),
         )
@@ -550,6 +552,9 @@ class LabSentinelAgent:
             return  # the PC belongs to the instance that is already running
         log.info("agent stopping")
         self.watchdog.stop()
+        # Never leave the participant frozen because the agent is stopping.
+        with contextlib.suppress(Exception):
+            self.core.release_input_freeze()
         for step in (self.titles.stop, self.streamer.stop, self.core.stop):
             try:
                 step()

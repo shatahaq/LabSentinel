@@ -55,6 +55,9 @@ class CommandType(StrEnum):
     RESUME = "resume"
     SET_DRY_RUN = "set_dry_run"
     LOCK_SCREEN = "lock_screen"
+    # Freeze/unfreeze the participant's keyboard and mouse (carries "on"/"off"
+    # in the command's text). A supervisor uses it on a PC caught cheating.
+    FREEZE_INPUT = "freeze_input"
     BROADCAST_MESSAGE = "broadcast_message"
     # Screen streaming level. Carried in the command's `text` as a StreamMode,
     # so the agent can stop capturing entirely when nobody is watching.

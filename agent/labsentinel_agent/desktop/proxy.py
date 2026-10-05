@@ -246,6 +246,10 @@ class DesktopProxy:
         result = self.request("lock", timeout=2.0)
         return None if result is None else bool(result)
 
+    def freeze(self, on: bool) -> bool | None:
+        result = self.request("freeze", {"on": bool(on)}, timeout=2.0)
+        return None if result is None else bool(result)
+
 
 def _int_or_none(value: Any) -> int | None:
     try:

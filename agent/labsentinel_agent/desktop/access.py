@@ -21,6 +21,7 @@ class _Proxy(Protocol):
     def capture_jpeg(self, *, max_width: int = ..., quality: int = ...) -> bytes | None: ...
     def close_windows(self, pid: int) -> bool | None: ...
     def lock(self) -> bool | None: ...
+    def freeze(self, on: bool) -> bool | None: ...
 
 
 class _Local(Protocol):
@@ -29,6 +30,7 @@ class _Local(Protocol):
     def capture_jpeg(self, *, max_width: int, quality: int) -> bytes | None: ...
     def close_windows(self, pid: int) -> bool: ...
     def lock(self) -> bool: ...
+    def freeze(self, on: bool) -> bool: ...
 
 
 class DesktopAccess:
@@ -82,6 +84,12 @@ class DesktopAccess:
             assert self._proxy is not None
             return bool(self._proxy.lock())
         return False if self._service_mode else self._local.lock()
+
+    def freeze(self, on: bool) -> bool:
+        if self.via_worker:
+            assert self._proxy is not None
+            return bool(self._proxy.freeze(on))
+        return False if self._service_mode else self._local.freeze(on)
 
 
 class DesktopCapturer:

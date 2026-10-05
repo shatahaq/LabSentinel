@@ -76,6 +76,8 @@ class HeartbeatPayload(_Payload):
     # participant's desktop (no desktop worker): screenshots, window titles and
     # closing apps are unavailable until it is back. See ADR-0006.
     desktop_access: bool = True
+    # True while the supervisor has frozen this PC's keyboard and mouse.
+    input_frozen: bool = False
     # Who is signed in at the PC now ("" = nobody). A service starts before
     # anyone signs in and stays connected across sign-ins, so the name in
     # HELLO goes stale; None = not reported (an older agent).

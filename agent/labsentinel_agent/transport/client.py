@@ -93,6 +93,7 @@ class DashboardClient:
         indicator_visible_provider: Callable[[], bool] = lambda: True,
         desktop_access_provider: Callable[[], bool] = lambda: True,
         username_provider: Callable[[], str | None] = lambda: None,
+        input_frozen_provider: Callable[[], bool] = lambda: False,
         heartbeat_interval_s: float = 5.0,
         backoff: BackoffPolicy | None = None,
     ) -> None:
@@ -108,6 +109,7 @@ class DashboardClient:
         self._indicator_visible = indicator_visible_provider
         self._desktop_access = desktop_access_provider
         self._username = username_provider
+        self._input_frozen = input_frozen_provider
         self._hb_interval = heartbeat_interval_s
         self._backoff = backoff or BackoffPolicy()
         self._stop = asyncio.Event()
@@ -261,6 +263,7 @@ class DashboardClient:
                         indicator_visible=self._indicator_visible(),
                         desktop_access=self._desktop_access(),
                         username=self._username(),
+                        input_frozen=self._input_frozen(),
                     ),
                 )
             await self._sleep(self._hb_interval)

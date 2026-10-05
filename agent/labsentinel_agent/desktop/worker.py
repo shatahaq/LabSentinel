@@ -36,6 +36,7 @@ class DesktopOps(Protocol):
     def capture_jpeg(self, *, max_width: int, quality: int) -> bytes | None: ...
     def close_windows(self, pid: int) -> bool: ...
     def lock(self) -> bool: ...
+    def freeze(self, on: bool) -> bool: ...
     def session_id(self) -> int: ...
 
 
@@ -69,6 +70,11 @@ class LocalDesktopOps:
         from labsentinel_agent.platform.win_window import lock_workstation
 
         return lock_workstation()
+
+    def freeze(self, on: bool) -> bool:
+        from labsentinel_agent.platform.win_freeze import set_input_frozen
+
+        return set_input_frozen(on)
 
     def session_id(self) -> int:
         from labsentinel_agent.platform.win_process import current_session_id
@@ -180,6 +186,8 @@ class DesktopWorker:
             return self._ops.close_windows(int(args["pid"]))
         if op == "lock":
             return self._ops.lock()
+        if op == "freeze":
+            return self._ops.freeze(bool(args.get("on", True)))
         if op == "ping":
             return "pong"
         raise ValueError(f"unknown op {op!r}")
