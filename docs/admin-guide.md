@@ -126,6 +126,7 @@ PC memakai kunci miliknya sendiri.
 |---|---|---|
 | PC tidak muncul di Layar PC | Belum dipasangkan / kode salah / pendaftaran ditutup | Lihat **Catatan aktivitas** ("Kode pemasangan salah", "PC baru ditolak") |
 | | Firewall memblokir | Pastikan aturan firewall installer terpasang (TCP 8765, UDP 50123) |
+| | Jaringan PC pengawas berprofil **Publik** di Windows (aturan firewall installer hanya untuk profil Privat/Domain) | Ubah profil jaringan ke **Privat** (Pengaturan → Jaringan → Properti) |
 | | Lab beda subnet/VLAN dengan PC pengawas | Isi alamat dashboard saat memasang agent (`ws://IP-PENGAWAS:8765`) |
 | PC ditolak "perlu dipasangkan ulang" | Database dashboard diganti/dipulihkan | Di PC itu: menu Start → **Pasangkan PC ini ke dashboard** → **Pasangkan ulang** |
 | "terlalu banyak percobaan, tunggu … detik" | 5 kode salah dari PC itu | Tunggu 15 menit, lalu ulangi dengan kode yang benar |

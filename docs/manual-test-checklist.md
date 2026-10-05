@@ -11,6 +11,10 @@ Legenda: 🔑 = butuh Administrator, 🖥️ = butuh dua PC (agent + dashboard).
 - [ ] 🖥️ Agent di PC lab menemukan dashboard **tanpa konfigurasi IP** (UDP
   broadcast) dan terhubung. *Catatan: broadcast lintas-subnet/VLAN atau yang
   diblokir switch dapat gagal; sediakan `direct_url` sebagai cadangan.*
+- [ ] 🖥️ Ulangi saat jaringan PC pengawas berprofil **Publik**: aturan firewall
+  installer hanya untuk Privat/Domain, jadi PC lain diperkirakan **tidak**
+  menemukan dashboard (belum diuji di LAN sungguhan). Agent di PC pengawas
+  sendiri tetap menemukannya lewat 127.0.0.1.
 - [ ] 🖥️ Heartbeat muncul di dashboard; cabut kabel LAN agent → status menjadi
   `dropped` setelah timeout; sambung lagi → `online` kembali (auto-reconnect).
 - [ ] Token salah → agent ditolak (`reject`), tidak muncul di dashboard.
