@@ -179,6 +179,9 @@ class DashboardService:
         self._pending: dict[str, _Pending] = {}
         self._last_notified: dict[tuple[str, str], float] = {}
         self._latest_frames: dict[str, ScreenFramePayload] = {}
+        # Each frame gets the next number, so the UI asks only for what is new.
+        self._frame_counter = 0
+        self._frame_seq: dict[str, int] = {}
         self._bg_tasks: set[asyncio.Task[Any]] = set()
         self._grid_open = False
         self._focused_agent: str | None = None
@@ -218,6 +221,22 @@ class DashboardService:
 
     def latest_frame(self, agent_id: str) -> ScreenFramePayload | None:
         return self._latest_frames.get(agent_id)
+
+    def frames_newer(
+        self, seen: dict[str, int]
+    ) -> list[tuple[str, int, ScreenFramePayload]]:
+        """Latest frames of the PCs in ``seen`` newer than the number given.
+
+        ``seen`` maps agent id -> the frame number the viewer already shows
+        (0 for none). One call serves the whole grid, live.
+        """
+        out = []
+        for agent_id, last in seen.items():
+            seq = self._frame_seq.get(agent_id, 0)
+            frame = self._latest_frames.get(agent_id)
+            if frame is not None and seq > last:
+                out.append((agent_id, seq, frame))
+        return out
 
     # ------------------------------------------------------------ ServerEvents
     async def on_agent_connected(self, session: AgentSessionLike) -> None:
@@ -265,6 +284,7 @@ class DashboardService:
         self._fail_pending_for(agent_id)
         self._stream_modes.pop(agent_id, None)
         self._latest_frames.pop(agent_id, None)  # don't show a stale screen
+        self._frame_seq.pop(agent_id, None)
         self._publish_agent(view)
 
     async def on_heartbeat(self, agent_id: str, hb: HeartbeatPayload) -> None:
@@ -336,6 +356,8 @@ class DashboardService:
 
     async def on_screen_frame(self, agent_id: str, f: ScreenFramePayload) -> None:
         self._latest_frames[agent_id] = f
+        self._frame_counter += 1
+        self._frame_seq[agent_id] = self._frame_counter
         self._bus.publish(Topic.FRAME, {"agent_id": agent_id, "hi_res": f.hi_res})
 
     async def on_ack(self, agent_id: str, ack: AckPayload) -> None:

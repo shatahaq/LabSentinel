@@ -160,6 +160,30 @@ class UiBridge:
             }
         )
 
+    def get_frames(self, seen: dict[str, Any]) -> dict[str, Any]:
+        """New frames for many PCs at once (the live grid and detail view).
+
+        ``seen`` maps agent id -> frame number already on screen (0 = none);
+        only PCs with a newer frame are returned, with their new number.
+        """
+        try:
+            wanted = {str(k): int(v or 0) for k, v in dict(seen or {}).items()}
+        except (TypeError, ValueError):
+            return self._err("Permintaan frame tidak valid.")
+        now = time.time()
+        return self._ok(frames=[
+            {
+                "agent_id": agent_id,
+                "seq": seq,
+                "jpeg_b64": f.jpeg_b64,
+                "width": f.width,
+                "height": f.height,
+                "hi_res": f.hi_res,
+                "age_s": max(0.0, now - f.captured_at),
+            }
+            for agent_id, seq, f in self._svc.frames_newer(wanted)
+        ])
+
     def set_viewing(self, grid_open: bool, focused_agent: str | None = None) -> dict[str, Any]:
         """Tell agents what the admin is looking at (drives streaming level)."""
         try:

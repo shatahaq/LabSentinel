@@ -336,7 +336,11 @@
      Monitoring grid
      =================================================================== */
   let frameObserver = null;
-  const frameTimers = new Map();
+  // Live grid: cards on screen (id -> card) and the frame number each shows.
+  const liveCards = new Map();
+  const shownSeq = new Map();
+  let framePump = null;
+  const FRAME_POLL_MS = 200;
 
   function visibleAgents() {
     const q = State.search.trim().toLowerCase();
@@ -448,48 +452,58 @@
     return node;
   }
 
-  /* Only poll frames for cards actually on screen. */
+  /* Live grid: one request fetches every new frame for the cards on screen
+     (cards scrolled out of view are not asked for). */
   function startFrameWatching() {
     frameObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         const id = entry.target.dataset.agent;
-        if (entry.isIntersecting) scheduleFrame(id, entry.target);
-        else clearFrame(id);
+        if (entry.isIntersecting) liveCards.set(id, entry.target);
+        else liveCards.delete(id);
       });
     }, { rootMargin: "120px" });
     $$("#pc-grid .pc").forEach((n) => frameObserver.observe(n));
+    if (!framePump) pumpFrames();
   }
 
   function stopFrameWatching() {
     if (frameObserver) { frameObserver.disconnect(); frameObserver = null; }
-    frameTimers.forEach((t) => clearInterval(t));
-    frameTimers.clear();
+    if (framePump) { clearTimeout(framePump); framePump = null; }
+    liveCards.clear();
+    shownSeq.clear();  // re-rendered cards start empty: paint them at once
   }
 
-  function clearFrame(id) {
-    const timer = frameTimers.get(id);
-    if (timer) { clearInterval(timer); frameTimers.delete(id); }
+  async function pumpFrames() {
+    framePump = setTimeout(pumpFrames, FRAME_POLL_MS);  // keep the beat
+    if (!liveCards.size || pumpFrames.busy) return;
+    pumpFrames.busy = true;
+    try {
+      const seen = {};
+      liveCards.forEach((_, id) => { seen[id] = shownSeq.get(id) || 0; });
+      const res = await API.getFrames(seen);
+      if (!res.ok) return;
+      res.frames.forEach((f) => {
+        const card = liveCards.get(f.agent_id);
+        if (!card) return;
+        paintScreen(card.querySelector("[data-screen]"), f.jpeg_b64, "");
+        shownSeq.set(f.agent_id, f.seq);
+      });
+    } finally {
+      pumpFrames.busy = false;
+    }
   }
 
-  function scheduleFrame(id, card) {
-    if (frameTimers.has(id)) return;
-    const paint = async () => {
-      const res = await API.getFrame(id);
-      const screen = card.querySelector("[data-screen]");
-      if (!screen || !res.ok) return;
-      if (!res.frame) return;
-      let img = screen.querySelector("img");
-      if (!img) {
-        img = document.createElement("img");
-        img.alt = "";
-        const ph = screen.querySelector(".pc__placeholder");
-        if (ph) ph.remove();
-        screen.insertBefore(img, screen.firstChild);
-      }
-      img.src = `data:image/jpeg;base64,${res.frame.jpeg_b64}`;
-    };
-    paint();
-    frameTimers.set(id, setInterval(paint, 1200));
+  function paintScreen(screen, jpegB64, alt) {
+    if (!screen) return;
+    let img = screen.querySelector("img");
+    if (!img) {
+      img = document.createElement("img");
+      img.alt = alt;
+      const ph = screen.querySelector(".pc__placeholder");
+      if (ph) ph.remove();
+      screen.insertBefore(img, screen.firstChild);
+    }
+    img.src = `data:image/jpeg;base64,${jpegB64}`;
   }
 
   function syncFilterButtons() {
@@ -586,19 +600,24 @@
           </div>
           <div class="detail__facts" id="detail-facts"></div>`;
         paintDetail(agent);
+        // Live: ask often, but only new frames come back (the agent streams
+        // this PC at a higher rate while it is open).
+        let seq = 0;
+        let busy = false;
         detailTimer = setInterval(async () => {
-          const res = await API.getFrame(agentId);
-          const screen = $("#detail-screen");
-          if (!screen || !res.ok || !res.frame) return;
-          let img = screen.querySelector("img");
-          if (!img) {
-            img = document.createElement("img");
-            img.alt = "Layar peserta";
-            screen.innerHTML = "";
-            screen.appendChild(img);
+          if (busy) return;
+          busy = true;
+          try {
+            const res = await API.getFrames({ [agentId]: seq });
+            if (res.ok && res.frames.length) {
+              const f = res.frames[0];
+              paintScreen($("#detail-screen"), f.jpeg_b64, "Layar peserta");
+              seq = f.seq;
+            }
+          } finally {
+            busy = false;
           }
-          img.src = `data:image/jpeg;base64,${res.frame.jpeg_b64}`;
-        }, 400);
+        }, 150);
       },
       footer: (foot, close) => {
         const pause = el('<button class="btn">Jeda PC ini</button>');

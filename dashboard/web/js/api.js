@@ -29,6 +29,7 @@
     getOverview: () => call("get_overview"),
     getAgents: () => call("get_agents"),
     getFrame: (id) => call("get_frame", id),
+    getFrames: (seen) => call("get_frames", seen),
     setViewing: (gridOpen, focused) => call("set_viewing", gridOpen, focused || null),
 
     pause: (ids) => call("pause", ids || null),

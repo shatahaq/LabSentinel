@@ -149,3 +149,48 @@ async def test_disconnect_discards_stale_frame(tmp_path: Path) -> None:
     assert svc.latest_frame("pc-01") is None
     db.close()
 
+
+
+@pytest.mark.asyncio
+async def test_frames_newer_returns_only_updated_pcs(tmp_path: Path) -> None:
+    """One request serves the whole grid: only PCs with a newer frame come back."""
+    from labsentinel_shared.protocol import ScreenFramePayload
+
+    db, svc, link = _build(tmp_path)
+    for pc in ("pc-01", "pc-02"):
+        await _connect(svc, link, pc)
+
+    def frame(pc: str, body: str) -> ScreenFramePayload:
+        return ScreenFramePayload(agent_id=pc, width=320, height=180,
+                                  jpeg_b64=body, captured_at=1.0)
+
+    await svc.on_screen_frame("pc-01", frame("pc-01", "a1"))
+    await svc.on_screen_frame("pc-02", frame("pc-02", "b1"))
+
+    # Viewer has nothing yet: both come back, each with its own number.
+    got = svc.frames_newer({"pc-01": 0, "pc-02": 0})
+    seqs = {aid: seq for aid, seq, _ in got}
+    assert set(seqs) == {"pc-01", "pc-02"}
+
+    # Acknowledge those numbers: nothing new.
+    assert svc.frames_newer(seqs) == []
+
+    # Only pc-01 gets a new frame -> only pc-01 comes back.
+    await svc.on_screen_frame("pc-01", frame("pc-01", "a2"))
+    got = svc.frames_newer(seqs)
+    assert [aid for aid, _, _ in got] == ["pc-01"]
+    assert got[0][2].jpeg_b64 == "a2" and got[0][1] > seqs["pc-01"]
+    db.close()
+
+
+@pytest.mark.asyncio
+async def test_frames_newer_ignores_a_disconnected_pc(tmp_path: Path) -> None:
+    from labsentinel_shared.protocol import ScreenFramePayload
+
+    db, svc, link = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    await svc.on_screen_frame("pc-01", ScreenFramePayload(
+        agent_id="pc-01", width=320, height=180, jpeg_b64="a", captured_at=1.0))
+    await svc.on_agent_disconnected("pc-01", clean=False)
+    assert svc.frames_newer({"pc-01": 0}) == []
+    db.close()

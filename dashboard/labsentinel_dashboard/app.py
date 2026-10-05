@@ -66,7 +66,7 @@ WEB_DIR = _web_dir()
 # Bridge methods exposed to the UI. Listed explicitly so nothing is published
 # to the browser by accident.
 EXPOSED = (
-    "poll_events", "get_overview", "get_agents", "get_frame", "set_viewing",
+    "poll_events", "get_overview", "get_agents", "get_frame", "get_frames", "set_viewing",
     "pause", "resume", "lock_screens", "freeze_input", "broadcast",
     "get_rules", "set_mode", "set_dry_run", "set_whitelist",
     "set_site_categories", "set_custom_sites", "set_close_grace",
