@@ -77,6 +77,10 @@ jobs:
         with:
           name: LabSentinel-installers
           path: installers
+      - name: Tools for the checks (screenshots, browser)
+        run: |
+          python -m pip install pillow playwright websockets
+          python -m playwright install chromium
       - name: Install and start the dashboard
         shell: pwsh
         run: |
@@ -88,14 +92,21 @@ jobs:
           Start-Sleep -Seconds 15
           Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop | Out-Null
           "dashboard listening on 8765"
-      - name: Install the agent silently with the pairing code
+          python packaging/ci/ws_probe.py ws://127.0.0.1:8765
+
+      - name: Install the agent by double-click (pairing window, screenshots)
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
           $code = python packaging/ci/dashboard_state.py code
           "pairing code: $code"
           $setup = Get-ChildItem installers\LabSentinelAgent-Setup-*.exe | Select-Object -First 1
-          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/PAIRCODE=$code","/DASHBOARD=ws://127.0.0.1:8765","/LOG=agent-setup.log" -Wait
-          Start-Sleep -Seconds 25
+          $p = Start-Process $setup.FullName -ArgumentList "/LOG=agent-setup-gui.log" -PassThru
+          python packaging/ci/gui_pairing.py $code shots
+          if (-not $p.WaitForExit(180000)) { throw "installer did not finish" }
+          "installer exit code: $($p.ExitCode)"
+          Start-Sleep -Seconds 20
+
       - name: Check service, desktop worker and connection
         shell: pwsh
         run: |
@@ -105,6 +116,16 @@ jobs:
             Select-Object ProcessId, Name, SessionId, CommandLine | Format-Table -AutoSize -Wrap
           icacls C:\ProgramData\LabSentinel\agent\token
           python packaging/ci/dashboard_state.py check-connected
+
+      - name: Dashboard shows this PC's screen (screenshots)
+        shell: pwsh
+        run: |
+          Set-Content -Path praktikum.txt -Value "Praktikum 3 - Perulangan`r`n`r`ndef rata_rata(nilai):`r`n    return sum(nilai) / len(nilai)`r`n`r`nprint(rata_rata([78, 85, 92, 66, 88]))"
+          $np = Start-Process notepad.exe -ArgumentList (Resolve-Path praktikum.txt) -PassThru
+          Start-Sleep -Seconds 3
+          python packaging/ci/dashboard_shots.py shots
+          Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue
+
       - name: Kill the service process; it must come back and be reported
         shell: pwsh
         run: |
@@ -116,6 +137,7 @@ jobs:
           "service state after: $($svc.State) pid $($svc.ProcessId)"
           if ($svc.State -ne "Running") { throw "service did not restart after a forced kill" }
           python packaging/ci/dashboard_state.py check-tamper
+
       - name: Uninstall the agent
         shell: pwsh
         run: |
@@ -126,6 +148,35 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "service still installed after uninstall" }
           if (Test-Path C:\ProgramData\LabSentinel\agent\token) { throw "token left behind" }
           "uninstalled cleanly"
+
+      - name: Silent install for a whole lab (/PAIRCODE)
+        shell: pwsh
+        run: |
+          $code = python packaging/ci/dashboard_state.py code
+          $setup = Get-ChildItem installers\LabSentinelAgent-Setup-*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/PAIRCODE=$code","/DASHBOARD=ws://127.0.0.1:8765","/LOG=agent-setup-silent.log" -Wait
+          Start-Sleep -Seconds 15
+          sc.exe query LabSentinelAgent
+          if ($LASTEXITCODE -ne 0) { throw "silent install: service not installed" }
+          if (-not (Test-Path C:\ProgramData\LabSentinel\agent\token)) { throw "silent install: not paired" }
+          "silent install paired and running"
+
+      - name: Show logs
+        if: always()
+        shell: pwsh
+        run: |
+          $files = @("agent-setup-gui.log", "agent-setup-silent.log", "dashboard.out", "dashboard.err",
+                     "C:\ProgramData\LabSentinel\agent\logs\agent.log",
+                     "C:\ProgramData\LabSentinel\agent\logs\desktop-worker.log",
+                     "C:\ProgramData\LabSentinel\agent\logs\setup.log",
+                     "C:\ProgramData\LabSentinel\dashboard\logs\dashboard.log")
+          foreach ($f in $files) {
+            if (Test-Path $f) { "===== $f"; Get-Content $f -Tail 120 }
+            else { "===== $f (missing)" }
+          }
+      - name: Screenshots into the log
+        if: always()
+        run: python packaging/ci/emit_images.py shots
       - name: Collect logs
         if: always()
         shell: pwsh
@@ -134,9 +185,9 @@ jobs:
           Copy-Item *.log, dashboard.out, dashboard.err e2e-logs -ErrorAction SilentlyContinue
           Copy-Item C:\ProgramData\LabSentinel\agent\logs\* e2e-logs -ErrorAction SilentlyContinue
           Copy-Item C:\ProgramData\LabSentinel\dashboard\logs\* e2e-logs -ErrorAction SilentlyContinue
-          Get-ChildItem $env:TEMP -Filter "Setup Log*.txt" | Copy-Item -Destination e2e-logs -ErrorAction SilentlyContinue
+          Copy-Item shots e2e-logs -Recurse -ErrorAction SilentlyContinue
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-logs
+          name: e2e-logs-and-screenshots
           path: e2e-logs
