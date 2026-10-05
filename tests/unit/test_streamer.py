@@ -113,7 +113,7 @@ async def test_grid_mode_uses_small_low_quality_frames() -> None:
     s.set_mode(StreamMode.GRID)
     with pytest.raises(asyncio.CancelledError):
         await s.run()
-    assert cap.calls[0] == (320, 40)
+    assert cap.calls[0] == (400, 45)
     assert sent and sent[0][2] is False  # not hi-res
 
 
@@ -131,7 +131,7 @@ async def test_hires_mode_uses_larger_frames() -> None:
     s.set_mode(StreamMode.HIRES)
     with pytest.raises(asyncio.CancelledError):
         await s.run()
-    assert cap.calls[0] == (1280, 70)
+    assert cap.calls[0] == (1280, 65)
     assert sent and sent[0][2] is True
 
 
@@ -251,3 +251,54 @@ def test_jpeg_size_reads_real_dimensions() -> None:
 
 def test_jpeg_size_falls_back_on_garbage() -> None:
     assert _jpeg_size(b"\xff\xd8not-a-real-jpeg", fallback_width=320) == (320, 180)
+
+
+def test_grid_is_live() -> None:
+    """The grid streams every PC smoothly enough to watch, not one still a second."""
+    assert DEFAULT_PROFILES[StreamMode.GRID].fps >= 5.0
+
+
+class StillScreen:
+    """A screen that never changes: the same JPEG every time."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def capture_jpeg(self, *, max_width: int = 1280, quality: int = 60) -> bytes | None:
+        self.calls += 1
+        return b"\xff\xd8\xff-same-\xff\xd9"
+
+
+@pytest.mark.asyncio
+async def test_unchanged_screen_is_not_sent_again() -> None:
+    now = {"t": 0.0}
+    s, sent = _build(StillScreen(), clock=lambda: now["t"])
+    s.set_mode(StreamMode.GRID)
+    profile = DEFAULT_PROFILES[StreamMode.GRID]
+    for _ in range(5):  # five captures within one second
+        await s._capture_and_send(profile, hi_res=False)
+        now["t"] += 0.2
+    assert len(sent) == 1 and s.frames_unchanged == 4
+
+
+@pytest.mark.asyncio
+async def test_unchanged_screen_is_resent_as_keep_alive() -> None:
+    now = {"t": 0.0}
+    s, sent = _build(StillScreen(), clock=lambda: now["t"])
+    s.set_mode(StreamMode.GRID)
+    profile = DEFAULT_PROFILES[StreamMode.GRID]
+    await s._capture_and_send(profile, hi_res=False)
+    now["t"] += 3.5  # past the keep-alive interval
+    await s._capture_and_send(profile, hi_res=False)
+    assert len(sent) == 2
+
+
+@pytest.mark.asyncio
+async def test_switching_view_always_sends_a_fresh_frame() -> None:
+    now = {"t": 0.0}
+    s, sent = _build(StillScreen(), clock=lambda: now["t"])
+    s.set_mode(StreamMode.GRID)
+    await s._capture_and_send(DEFAULT_PROFILES[StreamMode.GRID], hi_res=False)
+    s.set_mode(StreamMode.HIRES)  # admin opens this PC
+    await s._capture_and_send(DEFAULT_PROFILES[StreamMode.HIRES], hi_res=True)
+    assert [h for _, _, h in sent] == [False, True]
