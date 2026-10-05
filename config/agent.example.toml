@@ -1,6 +1,9 @@
-# Contoh konfigurasi Agent Lab Sentinel.
-# Salin ke lokasi data agent (mis. C:\ProgramData\LabSentinel\agent\agent.toml)
-# dan sesuaikan. JANGAN menaruh token di sini — token ada di file terpisah.
+# Contoh konfigurasi Agent Lab Sentinel. Semua baris opsional.
+# Simpan sebagai agent.toml di folder program, di samping labsentinel-agent.exe
+# (mis. C:\Program Files\LabSentinel\Agent\agent.toml). Layanan, ikon tray, dan
+# perintah labsentinel-agent membaca berkas yang sama. Saat menjalankan dari
+# kode sumber, berikan dengan --config.
+# JANGAN menaruh token di sini — token dibuat saat pairing, di berkas terpisah.
 
 data_dir = "C:/ProgramData/LabSentinel/agent"
 log_level = "INFO"
@@ -10,7 +13,8 @@ discovery_port = 50123
 # direct_url = "ws://10.0.0.5:8765"
 discovery_timeout_s = 8.0
 
-# File berisi token pairing mentah (dibuat saat pairing).
+# Token milik PC ini (dibuat otomatis saat pairing; hanya SYSTEM & Administrators
+# yang dapat membacanya).
 token_file = "C:/ProgramData/LabSentinel/agent/token"
 
 heartbeat_interval_s = 5.0

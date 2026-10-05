@@ -147,9 +147,10 @@ def _make_agent() -> Any:
     from labsentinel_shared.config import load_agent_config
     from labsentinel_shared.logging_setup import setup_logging
 
-    config = load_agent_config(_config_path())
+    path = _config_path()
+    config = load_agent_config(path)
     setup_logging(log_path=config.log_path, level=config.log_level, console=False)
-    return LabSentinelAgent(config)
+    return LabSentinelAgent(config, service_mode=True, config_path=path)
 
 
 def _config_path() -> Path | None:

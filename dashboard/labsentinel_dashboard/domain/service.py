@@ -105,6 +105,9 @@ class AgentView:
     # False when the PC is monitored but the participant cannot see the tray
     # indicator (helper missing/killed) — a transparency problem to surface.
     indicator_visible: bool = True
+    # False when the agent cannot see the desktop (service without its desktop
+    # worker): no screen, no titles, apps are not closed. See ADR-0006.
+    desktop_access: bool = True
 
     @property
     def status(self) -> ConnectionStatus:
@@ -276,6 +279,7 @@ class DashboardService:
         view.mem_mb = hb.mem_mb
         view.active_window_title = hb.active_window_title
         view.indicator_visible = hb.indicator_visible
+        view.desktop_access = hb.desktop_access
         if throttle_db:
             self._db.touch_agent(agent_id, now)
         self._publish_agent(view)

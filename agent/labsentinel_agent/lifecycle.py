@@ -104,6 +104,11 @@ class PreviousRun:
         at = time.strftime("%H:%M:%S", time.localtime(self.last_alive))
         if self.reason == "service_stopped":
             return f"Layanan agent dihentikan secara manual (terakhir aktif {at})."
+        if self.reason == "watchdog":
+            return (
+                f"Agent tidak merespons dan dimulai ulang otomatis (terakhir aktif {at}); "
+                "bukan tindakan peserta, tetapi pemantauan sempat terhenti."
+            )
         if self.rebooted_since:
             return (
                 f"PC mati atau restart tanpa shutdown normal (terakhir aktif {at}); "
@@ -217,7 +222,7 @@ class LoopWatchdog:
         self._stall_s = stall_s
         self._check_every = check_every_s
         self._clock = clock
-        self._on_stall = on_stall or _exit_for_restart
+        self._on_stall = on_stall or exit_for_restart
         self._last = clock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -254,6 +259,7 @@ class LoopWatchdog:
             self.check()
 
 
-def _exit_for_restart(_age: float) -> None:
+def exit_for_restart(_age: float) -> None:
+    """Leave immediately, without cleanup, so the service manager restarts us."""
     logging.shutdown()
     os._exit(EXIT_WATCHDOG)

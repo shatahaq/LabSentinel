@@ -125,6 +125,35 @@ def test_manual_service_stop_is_remembered(tmp_path: Path) -> None:
     assert "dihentikan secara manual" in prev.describe()
 
 
+def test_watchdog_restart_is_not_called_a_kill(tmp_path: Path) -> None:
+    clock = Clock(1000.0)
+    m = _marker(tmp_path, clock)
+    m.begin()
+    m.end(reason="watchdog")
+    prev = _marker(tmp_path, clock).begin()
+    assert prev is not None
+    text = prev.describe()
+    assert "dimulai ulang otomatis" in text and "paksa" not in text
+
+
+def test_agent_stall_marks_the_reason_before_exiting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import labsentinel_agent.app as app_mod
+    from labsentinel_shared.config import AgentConfig
+
+    exits: list[float] = []
+    monkeypatch.setattr(app_mod, "exit_for_restart", exits.append)
+    monkeypatch.setattr(app_mod, "_registry", FakeRegistry)
+    config = AgentConfig(data_dir=tmp_path, token_file=tmp_path / "token")
+    agent = app_mod.LabSentinelAgent(config)
+    agent.marker.begin()
+    agent._on_stall(120.0)
+    assert exits == [120.0]
+    prev = RunMarker(tmp_path / "running.json").begin()
+    assert prev is not None and prev.reason == "watchdog"
+
+
 def test_unreadable_marker_still_counts_as_abnormal(tmp_path: Path) -> None:
     (tmp_path / "running.json").write_text("{not json", encoding="utf-8")
     prev = _marker(tmp_path, Clock(1000.0)).begin()

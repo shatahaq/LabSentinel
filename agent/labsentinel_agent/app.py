@@ -33,12 +33,14 @@ import socket
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from labsentinel_agent.capture.screenshot import MssScreenshotCapturer
 from labsentinel_agent.capture.streamer import ScreenStreamer
 from labsentinel_agent.core import AgentCore, RuntimeState, _Detector
+from labsentinel_agent.desktop.access import DesktopAccess, DesktopCapturer
+from labsentinel_agent.desktop.proxy import DesktopProxy
 from labsentinel_agent.enforce.detector import PollingProcessSource
 from labsentinel_agent.enforce.engine import EnforcementEngine, ViolationRecord
 from labsentinel_agent.enforce.identity import ProcessInfo
@@ -46,7 +48,13 @@ from labsentinel_agent.enforce.matcher import WhitelistMatcher
 from labsentinel_agent.enforce.ports import ProcessController
 from labsentinel_agent.enforce.safety import SafetyPolicy
 from labsentinel_agent.enforce.title_watch import TitleHit, TitleWatcher
-from labsentinel_agent.lifecycle import InstanceLock, LoopWatchdog, PreviousRun, RunMarker
+from labsentinel_agent.lifecycle import (
+    InstanceLock,
+    LoopWatchdog,
+    PreviousRun,
+    RunMarker,
+    exit_for_restart,
+)
 from labsentinel_agent.policy.browser_policy import BrowserPolicyManager
 from labsentinel_agent.policy.registry import RegistryPort
 from labsentinel_agent.rule_cache import RuleCache
@@ -137,11 +145,33 @@ def store_token(config: AgentConfig, token: str) -> None:
 # ---------------------------------------------------------------- the agent
 class LabSentinelAgent:
     def __init__(
-        self, config: AgentConfig, *, pairing_code: str | None = None, pair_only: bool = False
+        self,
+        config: AgentConfig,
+        *,
+        pairing_code: str | None = None,
+        pair_only: bool = False,
+        service_mode: bool = False,
+        config_path: Path | None = None,
     ) -> None:
         self.config = config
         self.pairing_code = pairing_code
         self.pair_only = pair_only
+        # As a Windows Service (session 0) the desktop is reached through a
+        # worker in the user's session; from a console, directly. ADR-0006.
+        self.service_mode = service_mode
+        self.config_path = config_path
+        self.desktop_proxy = (
+            DesktopProxy(
+                endpoint_file=config.data_dir / "desktop_endpoint",
+                token_file=config.data_dir / "desktop_token",
+            )
+            if service_mode
+            else None
+        )
+        self.desktop = DesktopAccess(
+            proxy=self.desktop_proxy, local=_local_desktop(), service_mode=service_mode
+        )
+        self._someone_logged_in: Callable[[], bool] = lambda: True
         self.agent_id = stable_agent_id(config)
         self.runtime = RuntimeState(state=AgentState.ENFORCING)
         self.cache = RuleCache(config.rule_cache_path)
@@ -153,7 +183,7 @@ class LabSentinelAgent:
         self.policy = BrowserPolicyManager(
             _registry(), backup_path=config.data_dir / "policy_backup.json"
         )
-        self.capturer = MssScreenshotCapturer()
+        self.capturer = DesktopCapturer(self.desktop)
         self.streamer = ScreenStreamer(
             capturer=self.capturer,
             send=self._send_frame,
@@ -167,7 +197,7 @@ class LabSentinelAgent:
         self.engine = EnforcementEngine(
             safety=safety,
             matcher=WhitelistMatcher(),
-            controller=_controller(),
+            controller=_controller(self.desktop.close_windows),
             warner=self.tray,  # warnings reach the participant via the tray helper
             capturer=self.capturer,
             emit=self._emit_violation,
@@ -183,14 +213,14 @@ class LabSentinelAgent:
                 list_processes=self.detector_source.list_processes,
                 stop=self.detector_source.stop,
             ),
-            lock_fn=_lock_screen,
+            lock_fn=self.desktop.lock,
             notify_fn=self.tray.notify,
             status_sink=lambda state, connected: self.tray.set_status(state, connected=connected),
             policy=self.policy,
             streamer=self.streamer,
         )
         self.titles = TitleWatcher(
-            foreground=_foreground,
+            foreground=self.desktop.foreground,
             ruleset_provider=self.runtime.effective_ruleset,
             enabled=lambda: self.runtime.state is AgentState.ENFORCING,
             on_hit=self._on_title_hit,
@@ -201,7 +231,7 @@ class LabSentinelAgent:
         # reveals an abnormal end of the previous run, and a loop watchdog.
         self.instance_lock = InstanceLock(config.data_dir / "agent.lock")
         self.marker = RunMarker(config.data_dir / "running.json")
-        self.watchdog = LoopWatchdog()
+        self.watchdog = LoopWatchdog(on_stall=self._on_stall)
         self.previous_run: PreviousRun | None = None
         # Why we are stopping, kept for the next start ("" = a normal stop).
         self.stop_reason = ""
@@ -221,6 +251,9 @@ class LabSentinelAgent:
         if self.pair_only:
             return await self._pair_only()
         self._started = True
+        _set_window_source(self.desktop.window_index)
+        if self.desktop_proxy is not None:
+            self.desktop_proxy.start()
 
         # A leftover policy backup means the last run ended abnormally; put the
         # machine back the way we found it before doing anything else.
@@ -256,13 +289,16 @@ class LabSentinelAgent:
             pairing_code=self.pairing_code,
             on_token_issued=self._on_token_issued,
             state_provider=self.core.state,
-            metrics_provider=_metrics,
+            metrics_provider=self._metrics,
             on_ruleset=self.core.on_ruleset,
             on_command=self.core.on_command,
             cached_revision_provider=lambda: (
                 self.cache.current.revision if self.cache.current else -1
             ),
             indicator_visible_provider=lambda: self.tray.indicator_visible,
+            desktop_access_provider=lambda: self.desktop.available(
+                someone_logged_in=self._someone_logged_in()
+            ),
             heartbeat_interval_s=self.config.heartbeat_interval_s,
             backoff=BackoffPolicy(),
         )
@@ -271,8 +307,11 @@ class LabSentinelAgent:
         await self.core.sweep_running()
 
         self.watchdog.start()
+        extra: list[asyncio.Future[Any]] = []
+        if self.desktop_proxy is not None:
+            extra.append(asyncio.ensure_future(self._supervise_desktop_worker()))
         link = asyncio.ensure_future(self.client.run(self._find_dashboard))
-        tasks = [
+        tasks: list[asyncio.Future[Any]] = [
             link,
             asyncio.ensure_future(self.core.run_detection()),
             asyncio.ensure_future(self.streamer.run()),
@@ -283,6 +322,7 @@ class LabSentinelAgent:
         ]
         if self.previous_run is not None:
             tasks.append(asyncio.ensure_future(self._report_previous_run(self.previous_run)))
+        tasks.extend(extra)
         try:
             pending = set(tasks)
             while pending:
@@ -371,6 +411,54 @@ class LabSentinelAgent:
         log.info("this PC is now paired; token stored at %s", self.config.token_file)
         print("\nPC ini berhasil dipasangkan. Kode tidak perlu diketik lagi.\n")
 
+    async def _supervise_desktop_worker(self) -> None:
+        """Service mode: keep a desktop worker in the active console session."""
+        from labsentinel_agent.desktop.spawn import (
+            WorkerSupervisor,
+            active_console_session,
+            spawn_in_session,
+            worker_command,
+        )
+
+        proxy = self.desktop_proxy
+        assert proxy is not None
+        command = worker_command(self.config_path)
+        supervisor = WorkerSupervisor(
+            active_session=active_console_session,
+            connected_session=lambda: proxy.session_id,
+            spawn=lambda session: spawn_in_session(session, command),
+        )
+        self._someone_logged_in = supervisor.someone_logged_in
+        await asyncio.gather(supervisor.run(), self._sweep_when_desktop_arrives())
+
+    async def _sweep_when_desktop_arrives(self) -> None:
+        """Re-check running apps whenever a desktop worker (re)connects.
+
+        Until then nothing on the desktop is visible, so apps already open at
+        that moment (service restarted mid-session, user just logged in) would
+        otherwise only be checked when something changes.
+        """
+        proxy = self.desktop_proxy
+        assert proxy is not None
+        seen = None
+        while True:
+            current = proxy.session_id if proxy.connected else None
+            if current is not None and current != seen:
+                log.info("desktop worker ready for session %s; checking running apps", current)
+                await self.core.sweep_running()
+            seen = current
+            await asyncio.sleep(1.0)
+
+    def _metrics(self) -> tuple[float, float, str]:
+        cpu, mem, _local_title = _metrics()
+        return cpu, mem, self.desktop.foreground()[1]
+
+    def _on_stall(self, age: float) -> None:
+        """The loop is hung: note why, then exit so the service restarts us."""
+        with contextlib.suppress(Exception):
+            self.marker.end(reason="watchdog")  # not a kill; say so next start
+        exit_for_restart(age)
+
     async def _keep_marker_fresh(self) -> None:
         """Note that we are alive, so an abnormal end can be dated."""
         while True:
@@ -448,6 +536,10 @@ class LabSentinelAgent:
             # Removed on a normal stop; kept with a reason (e.g. the service
             # was stopped by hand) so the next start can report it.
             self.marker.end(reason=self.stop_reason)
+        if self.desktop_proxy is not None:
+            with contextlib.suppress(Exception):
+                self.desktop_proxy.stop()  # the worker is told to exit
+        _set_window_source(None)
         self.instance_lock.release()
 
     # ------------------------------------------------------------- plumbing
@@ -507,10 +599,22 @@ def _registry() -> RegistryPort:
     return FakeRegistry()
 
 
-def _controller() -> ProcessController:
+def _controller(window_closer: Callable[[int], bool]) -> ProcessController:
     from labsentinel_agent.platform.win_process import WinProcessController
 
-    return WinProcessController()
+    return WinProcessController(window_closer=window_closer)
+
+
+def _local_desktop() -> Any:
+    from labsentinel_agent.desktop.worker import LocalDesktopOps
+
+    return LocalDesktopOps()
+
+
+def _set_window_source(provider: Callable[[], dict[int, str] | None] | None) -> None:
+    from labsentinel_agent.platform.win_process import set_window_index_provider
+
+    set_window_index_provider(provider)
 
 
 def _snapshot() -> list[ProcessInfo]:
@@ -519,22 +623,10 @@ def _snapshot() -> list[ProcessInfo]:
     return collect_processes(own_pids=frozenset({_own_pid()}))
 
 
-def _foreground() -> tuple[str, str]:
-    from labsentinel_agent.platform.win_window import foreground_process_and_title
-
-    return foreground_process_and_title()
-
-
 def _metrics() -> tuple[float, float, str]:
     from labsentinel_agent.platform.win_window import agent_metrics
 
     return agent_metrics()
-
-
-def _lock_screen() -> bool:
-    from labsentinel_agent.platform.win_window import lock_workstation
-
-    return lock_workstation()
 
 
 def _own_pid() -> int:
@@ -607,10 +699,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dashboard", default=None, help="Alamat dashboard (lewati penemuan otomatis)."
     )
+    parser.add_argument(
+        "--desktop-worker",
+        action="store_true",
+        help=argparse.SUPPRESS,  # started by the service inside the user's session
+    )
     parser.add_argument("--log-level", default=None, help="DEBUG, INFO, WARNING, ERROR.")
     args = parser.parse_args(argv)
 
     config = load_agent_config(args.config or default_config_path())
+    if args.desktop_worker:
+        from labsentinel_agent.desktop.worker import run_worker
+
+        setup_logging(
+            log_path=config.data_dir / "logs" / "desktop-worker.log",
+            level=args.log_level or config.log_level, console=False,
+        )
+        return run_worker(config.data_dir)
     if args.dashboard:
         config = config.model_copy(update={"direct_url": args.dashboard})
     setup_logging(log_path=config.log_path, level=args.log_level or config.log_level)

@@ -1,5 +1,7 @@
-# Contoh konfigurasi Dashboard Lab Sentinel (PC pengawas).
-# Salin ke C:\ProgramData\LabSentinel\dashboard\dashboard.toml dan sesuaikan.
+# Contoh konfigurasi Dashboard Lab Sentinel (PC pengawas). Semua baris opsional.
+# Simpan sebagai dashboard.toml di samping labsentinel-dashboard.exe
+# (mis. C:\Program Files\LabSentinel\Dashboard\dashboard.toml), atau berikan
+# dengan --config saat menjalankan dari kode sumber.
 
 data_dir = "C:/ProgramData/LabSentinel/dashboard"
 log_level = "INFO"
@@ -18,8 +20,8 @@ beacon_interval_s = 3.0
 eel_host = "localhost"
 eel_port = 8080
 
-# File berisi hash SHA-256 token pairing (token mentah TIDAK disimpan di sini).
-token_hash_file = "C:/ProgramData/LabSentinel/dashboard/token_hash"
+# Pemasangan PC memakai kode 6 digit (lihat halaman Aturan); token tiap PC
+# disimpan sebagai hash di basis data. Tidak ada token bersama yang perlu diatur.
 
 default_mode = "lab"       # exam | lab | free
 default_dry_run = true     # audit-only saat pertama dipasang

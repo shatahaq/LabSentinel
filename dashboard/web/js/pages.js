@@ -388,8 +388,10 @@
             ${icon(a.status === "online" ? "monitor" : "eye-off")}
             <span>${esc(a.status === "online" ? "Memuat layar..." : statusInfo(a.status).label)}</span>
           </div>
-          ${a.indicator_visible === false
-            ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
+          ${a.desktop_access === false
+            ? '<div class="pc__overlay"><span class="pc__tag">layar tidak terjangkau</span></div>'
+            : a.indicator_visible === false
+              ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
         </div>
         <div class="pc__meta">
           <div style="min-width:0">
@@ -636,6 +638,9 @@
       ["RAM agent", `${Math.round(agent.mem_mb || 0)} MB`],
       ["Kabar terakhir", ago(agent.last_heartbeat)],
       ["Indikator peserta", agent.indicator_visible === false ? "Tidak terlihat" : "Terlihat"],
+      ["Akses layar", agent.desktop_access === false
+        ? "Tidak terjangkau — layar, judul jendela, dan penutupan aplikasi tidak berjalan"
+        : "Normal"],
     ];
     const host = $("#detail-facts");
     if (host) {

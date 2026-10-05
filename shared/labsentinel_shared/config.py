@@ -72,7 +72,8 @@ class DashboardConfig(BaseModel):
     eel_host: str = "localhost"
     eel_port: int = Field(default=8080, gt=0, lt=65536)
 
-    # Auth: SHA-256 hash of the shared pairing token (raw token never stored).
+    # Unused since per-agent pairing (codes + hashed tokens in the database).
+    # Kept so dashboard.toml files written for earlier versions still load.
     token_hash_file: Path = Field(
         default=Path("C:/ProgramData/LabSentinel/dashboard/token_hash")
     )

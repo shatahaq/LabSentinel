@@ -91,6 +91,7 @@ class DashboardClient:
         on_command: CommandHandler,
         cached_revision_provider: Callable[[], int] = lambda: -1,
         indicator_visible_provider: Callable[[], bool] = lambda: True,
+        desktop_access_provider: Callable[[], bool] = lambda: True,
         heartbeat_interval_s: float = 5.0,
         backoff: BackoffPolicy | None = None,
     ) -> None:
@@ -104,6 +105,7 @@ class DashboardClient:
         self._on_command = on_command
         self._cached_rev = cached_revision_provider
         self._indicator_visible = indicator_visible_provider
+        self._desktop_access = desktop_access_provider
         self._hb_interval = heartbeat_interval_s
         self._backoff = backoff or BackoffPolicy()
         self._stop = asyncio.Event()
@@ -255,6 +257,7 @@ class DashboardClient:
                         mem_mb=mem,
                         active_window_title=title,
                         indicator_visible=self._indicator_visible(),
+                        desktop_access=self._desktop_access(),
                     ),
                 )
             await self._sleep(self._hb_interval)

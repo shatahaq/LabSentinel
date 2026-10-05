@@ -57,6 +57,7 @@ PROTECTED_PROCESSES: frozenset[str] = frozenset(
         # Lab Sentinel's own binaries (filled defensively; agent also self-excludes by PID)
         "labsentinel-agent.exe",
         "labsentinel-service.exe",
+        "labsentinel-tray.exe",  # the participant's indicator must never be closed
         "labsentinel-watchdog.exe",
     }
 )

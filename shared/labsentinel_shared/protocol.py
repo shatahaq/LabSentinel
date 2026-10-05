@@ -72,6 +72,10 @@ class HeartbeatPayload(_Payload):
     # False when the participant's tray indicator is not being shown (helper
     # missing or killed). Transparency requires the dashboard to surface this.
     indicator_visible: bool = True
+    # False when the agent runs as a service and cannot currently see the
+    # participant's desktop (no desktop worker): screenshots, window titles and
+    # closing apps are unavailable until it is back. See ADR-0006.
+    desktop_access: bool = True
 
 
 class ViolationPayload(_Payload):

@@ -146,6 +146,20 @@ async def test_status_reflects_agent_reported_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_lost_desktop_access_is_shown_to_the_supervisor(tmp_path: Path) -> None:
+    _, _, _, svc, link, _ = _build(tmp_path)
+    await _connect(svc, link, "pc-01")
+    assert svc.agent("pc-01").to_dict()["desktop_access"] is True
+    await svc.on_heartbeat("pc-01", HeartbeatPayload(
+        agent_id="pc-01", state=AgentState.ENFORCING, rule_revision=1, desktop_access=False))
+    assert svc.agent("pc-01").to_dict()["desktop_access"] is False
+    # Agents built before this field existed report nothing: treated as fine.
+    await svc.on_heartbeat("pc-01", HeartbeatPayload(
+        agent_id="pc-01", state=AgentState.ENFORCING, rule_revision=1))
+    assert svc.agent("pc-01").desktop_access is True
+
+
+@pytest.mark.asyncio
 async def test_disconnect_clean_vs_dropped(tmp_path: Path) -> None:
     _, _, _, svc, link, _ = _build(tmp_path)
     await _connect(svc, link, "pc-01")
