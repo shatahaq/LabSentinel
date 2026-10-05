@@ -102,6 +102,8 @@ class SimulatedPC:
             # Like the real agent: the code is only presented while unpaired.
             pairing_code=None if token else pairing_code,
             on_token_issued=self._store_token,
+            # One PC shows how a lost desktop worker looks on the dashboard.
+            desktop_access_provider=lambda: index != 6,
             state_provider=lambda: self.state,
             metrics_provider=lambda: (random.uniform(0.4, 1.9), random.uniform(38, 62),
                                       random.choice(["Google Chrome", "Visual Studio Code",
