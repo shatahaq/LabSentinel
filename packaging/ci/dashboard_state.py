@@ -104,6 +104,14 @@ def cmd_check_connected() -> None:
     finally:
         notepad.kill()
 
+    # The installer and the pairing window run with administrator rights and
+    # were still open when the worker first looked: they must not be listed.
+    own = query("SELECT subject FROM violations WHERE subject LIKE 'labsentinel%'")
+    if own:
+        raise SystemExit(f"FAIL: Lab Sentinel's own programs recorded as violations: "
+                         f"{sorted({r['subject'] for r in own})}")
+    print("no Lab Sentinel program was recorded as a violation")
+
 
 def cmd_check_tamper() -> None:
     rows = wait_for("forced kill reported as agent_tamper",
