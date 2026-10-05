@@ -80,8 +80,9 @@ melihat desktop?).
 ### Pemasangan (pairing)
 
 1. Admin membaca **kode 6 digit** di dashboard (halaman Aturan).
-2. Installer menjalankan `labsentinel-agent --pair KODE --pair-only`; `hello`
-   membawa kode, tanpa token.
+2. Admin mengetik kode di jendela pemasangan (`labsentinel-setup.exe`), atau
+   installer senyap menjalankan `labsentinel-agent --pair KODE --pair-only`;
+   `hello` membawa kode, tanpa token.
 3. Dashboard memeriksa: pendaftaran terbuka? kode cocok (constant-time)? alamat
    sumber tidak terkunci (5 salah → kunci 15 menit)? Lalu menerbitkan **token
    acak per-PC**, menyimpan **hash**-nya, mengirimnya sekali di `welcome`.
@@ -156,9 +157,13 @@ Log helper tray ada di `%LOCALAPPDATA%\LabSentinel\` tiap pengguna.
 
 ## 9. Packaging dan deploy
 
-`packaging/build.py` membangun dua folder PyInstaller (agent: tiga exe berbagi
-satu runtime; dashboard: exe + aset UI) dan, di Windows, dua installer Inno
-Setup. Lihat [deploy-guide.md](deploy-guide.md) dan
+`packaging/build.py` membangun dua folder PyInstaller (agent: empat exe berbagi
+satu runtime — `labsentinel-setup.exe` jendela pemasangan, `labsentinel-service.exe`,
+`labsentinel-agent.exe`, `labsentinel-tray.exe`; dashboard: exe + aset UI) dan,
+di Windows, dua installer Inno Setup. Installer agent yang diklik dua kali
+langsung membuka jendela pemasangan; `/PAIRCODE=` memasangkan tanpa jendela.
+`.github/workflows/windows.yml` membangun keduanya di runner Windows dan menguji
+pemasangan dari installer itu sungguhan. Lihat [deploy-guide.md](deploy-guide.md) dan
 [admin-guide.md](admin-guide.md).
 
 ## 10. Strategi pengujian

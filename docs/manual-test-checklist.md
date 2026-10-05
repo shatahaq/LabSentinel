@@ -272,15 +272,22 @@ dikompilasi**.
 - [ ] 🔑 Installer dashboard: pintasan menu Start membuka dashboard dengan
   `--keep-running`; aturan firewall "Lab Sentinel Dashboard (agent)" dan
   "(penemuan)" ada di `wf.msc`; jendela terbuka di Edge bila Chrome tidak ada.
-- [ ] 🔑 Installer agent interaktif: kode salah → pesan "Dashboard menolak kode
-  ini"; kode benar → PC muncul di dashboard; ikon tray langsung tampil.
+- [ ] 🔑 Installer agent diklik dua kali → satu permintaan UAC → jendela
+  "Pasang PC ini" (tanpa jendela konsol) → kode salah: "Kode salah" dan bisa
+  diulang di jendela yang sama → kode benar: "Berhasil dipasangkan", PC muncul
+  di dashboard, ikon tray tampil (paling lambat ±30 detik).
+- [ ] Jendela dibuka lagi dari menu Start → "PC ini sudah terpasang, layanan
+  berjalan" → **Pasangkan ulang** dengan kode baru → **tidak** ada catatan
+  "dihentikan secara manual" di dashboard.
+- [ ] Tampilan jendela pada layar 125%/150% (DPI tinggi) tetap tajam dan tidak
+  terpotong.
 - [ ] 🔑 Installer agent senyap: `/VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=…`
   di 2–3 PC sekaligus → semua muncul; log `%TEMP%\Setup Log*.txt` memuat
   `--pair ... -> 0`.
-- [ ] 🔑 Kode dikosongkan (persiapan disk image) → layanan terpasang tetapi
-  tidak berjalan, `agent_id` **tidak** ada; clone; di hasil clone setelah boot
-  `agent_id` dibuat; `--pair-only` + `sc start` → muncul di dashboard dengan ID
-  berbeda per PC.
+- [ ] 🔑 Persiapan disk image (jendela ditutup dengan **Batal**, atau senyap
+  tanpa `/PAIRCODE`) → layanan **belum** terpasang, `agent_id` **tidak** ada;
+  clone; di tiap hasil clone menu Start → Pasangkan → muncul di dashboard dengan
+  ID berbeda per PC.
 - [ ] 🔑 Upgrade (jalankan installer versi sama/baru di atas yang lama) →
   pairing dipertahankan, **tidak** ada catatan "dihentikan secara manual".
 - [ ] 🔑 Uninstall agent → layanan, aturan firewall, entri Run, dan berkas

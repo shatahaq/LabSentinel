@@ -98,8 +98,9 @@ berhenti di luar prosedur normal. Keterangannya menyebut caranya:
 ## Memasang PC baru (kode pemasangan)
 
 Di **Aturan → Pemasangan PC baru** tampil kode 6 digit. Kode ini diketik
-**sekali** saat memasang agent di tiap PC; setelah itu PC memakai kunci
-miliknya sendiri.
+**sekali** di jendela pemasangan yang muncul saat installer agent dijalankan di
+tiap PC (atau dari menu Start → **Pasangkan PC ini ke dashboard**); setelah itu
+PC memakai kunci miliknya sendiri.
 
 - **Buat kode baru**: kode lama langsung tidak berlaku. PC yang sudah terpasang
   tidak terpengaruh.
@@ -126,7 +127,7 @@ miliknya sendiri.
 | PC tidak muncul di Layar PC | Belum dipasangkan / kode salah / pendaftaran ditutup | Lihat **Catatan aktivitas** ("Kode pemasangan salah", "PC baru ditolak") |
 | | Firewall memblokir | Pastikan aturan firewall installer terpasang (TCP 8765, UDP 50123) |
 | | Lab beda subnet/VLAN dengan PC pengawas | Isi alamat dashboard saat memasang agent (`ws://IP-PENGAWAS:8765`) |
-| PC ditolak "perlu dipasangkan ulang" | Database dashboard diganti/dipulihkan | Pasang ulang PC itu dengan kode baru (lihat panduan deploy) |
+| PC ditolak "perlu dipasangkan ulang" | Database dashboard diganti/dipulihkan | Di PC itu: menu Start → **Pasangkan PC ini ke dashboard** → **Pasangkan ulang** |
 | "terlalu banyak percobaan, tunggu … detik" | 5 kode salah dari PC itu | Tunggu 15 menit, lalu ulangi dengan kode yang benar |
 | Semua PC **Terputus** sekaligus | Dashboard berhenti / jaringan putus / IP PC pengawas berubah | Jalankan ulang dashboard; beri IP tetap pada PC pengawas |
 | Jendela dashboard tidak terbuka | Tidak ada Chrome/Edge | Buka `http://localhost:8080` di browser apa saja |

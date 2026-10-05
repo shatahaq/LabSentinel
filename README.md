@@ -74,11 +74,17 @@ labsentinel-dashboard --keep-running          # mencetak kode pemasangan 6 digit
 labsentinel-agent --pair 123456               # sekali; berikutnya cukup: labsentinel-agent
 ```
 
-Membangun installer (Windows, butuh Inno Setup 6):
+Membangun installer (Windows, butuh Inno Setup 6) — atau unduh hasil build
+dari GitHub Actions (workflow **Windows**, artifact `LabSentinel-installers`):
 
 ```powershell
 python packaging/build.py --installer
 ```
+
+Memasang agent di PC lab: klik dua kali `LabSentinelAgent-Setup-<versi>.exe`,
+ketik kode 6 digit di jendela yang muncul, selesai. Untuk banyak PC sekaligus:
+`/VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=123456`. Lihat
+[docs/deploy-guide.md](docs/deploy-guide.md).
 
 ## Status milestone
 

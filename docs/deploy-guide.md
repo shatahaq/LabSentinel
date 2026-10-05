@@ -67,21 +67,28 @@ Sebelum memasang ke seluruh lab:
 
 ## 5. Pasang agent di PC peserta
 
-### Satu per satu
+### Satu per satu (tanpa terminal)
 
-1. Jalankan `LabSentinelAgent-Setup-<versi>.exe` sebagai Administrator.
-2. Masukkan **kode pemasangan** 6 digit. Alamat dashboard boleh dikosongkan.
-3. Selesai: layanan **Lab Sentinel Agent** berjalan dan PC muncul di dashboard
-   dalam beberapa detik.
+Salin `LabSentinelAgent-Setup-<versi>.exe` ke PC (flashdisk atau folder
+bersama), lalu:
 
-Bila kode ditolak atau dashboard tidak ditemukan, installer menjelaskan
-penyebabnya. Agent tetap terpasang tetapi belum aktif; setelah masalahnya
-beres, jalankan sebagai Administrator:
+1. **Klik dua kali** installer, setujui permintaan Administrator (UAC).
+2. Berkas tersalin, lalu jendela **Lab Sentinel Agent — Pasang PC ini**
+   terbuka.
+3. Ketik **kode pemasangan** 6 digit dari dashboard (halaman Aturan), klik
+   **Pasangkan**.
+4. Muncul **"Berhasil dipasangkan"**: layanan pemantauan sudah berjalan dan PC
+   tampil di dashboard dalam beberapa detik. Klik **Selesai**.
 
-```bat
-"C:\Program Files\LabSentinel\Agent\labsentinel-agent.exe" --pair-only
-sc start LabSentinelAgent
-```
+Bila ada masalah, jendela menjelaskannya dan Anda bisa langsung mencoba lagi:
+**Kode salah** (cek kode di dashboard), **Pendaftaran PC baru sedang ditutup**
+(buka di dashboard), **Terlalu banyak percobaan** (tunggu 15 menit),
+**Dashboard tidak ditemukan** (pastikan dashboard berjalan; bila lab beda
+jaringan, isi **Alamat dashboard** di bagian opsional, mis. `192.168.1.10`).
+
+Jendela yang sama bisa dibuka kapan saja dari menu Start → **Lab Sentinel →
+Pasangkan PC ini ke dashboard** (mis. setelah dashboard diganti). Pada PC yang
+sudah terpasang, jendela menampilkan statusnya dan tombol **Pasangkan ulang**.
 
 ### Banyak PC sekaligus (senyap)
 
@@ -94,7 +101,8 @@ LabSentinelAgent-Setup-<versi>.exe /VERYSILENT /SUPPRESSMSGBOXES /PAIRCODE=12345
 
 Tambahkan `/DASHBOARD=ws://192.168.1.10:8765` bila broadcast tidak tersedia.
 Log instalasi ada di `%TEMP%\Setup Log *.txt`; hasil pairing tercatat di sana
-(`labsentinel-agent.exe --pair ... -> 0` berarti berhasil).
+(`labsentinel-agent.exe --pair ... -> 0` berarti berhasil). PC yang gagal
+dipasangkan bisa diselesaikan lewat jendela di menu Start.
 
 ### Disk image / cloning
 
@@ -102,22 +110,23 @@ Agent menyimpan identitas PC (`agent_id`) dan kuncinya (`token`). Bila disk
 di-clone **setelah** pairing, semua hasil clone berbagi identitas dan saling
 memutus di dashboard. Pilih salah satu:
 
-- **Disarankan:** pasang agent di PC master **tanpa** kode (kosongkan kolom
-  kode, atau senyap tanpa `/PAIRCODE`). Installer tidak memasangkan dan tidak
-  menjalankan layanan, jadi image tidak membawa identitas apa pun. Clone; di
-  tiap PC hasil clone, layanan membuat identitasnya sendiri saat boot lalu
-  menunggu dipasangkan. Jalankan sebagai Administrator:
-  `labsentinel-agent.exe --pair-only` (meminta kode) lalu
-  `sc start LabSentinelAgent`.
+- **Disarankan:** di PC master, pasang agent **tanpa** memasangkan: tutup
+  jendela pemasangan dengan **Batal**, atau pasang senyap tanpa `/PAIRCODE`.
+  Layanan belum dipasang dan belum ada identitas apa pun di image. Clone; di
+  tiap PC hasil clone buka menu Start → **Pasangkan PC ini ke dashboard** dan
+  ketik kodenya (identitas dibuat saat itu, berbeda tiap PC).
 - Bila image sudah terlanjur dipasangkan: di tiap PC hasil clone, sebagai
-  Administrator:
+  Administrator, hentikan layanan dan hapus identitasnya, lalu pasangkan lagi
+  dari menu Start:
 
 ```bat
 sc stop LabSentinelAgent
 del "C:\ProgramData\LabSentinel\agent\agent_id" "C:\ProgramData\LabSentinel\agent\token"
-"C:\Program Files\LabSentinel\Agent\labsentinel-agent.exe" --pair-only
-sc start LabSentinelAgent
 ```
+
+Cadangan lewat baris perintah (sebagai Administrator):
+`"C:\Program Files\LabSentinel\Agent\labsentinel-agent.exe" --pair-only`
+(meminta kode) lalu `sc start LabSentinelAgent`.
 
 ## 6. Tutup pendaftaran dan mulai menegakkan
 
@@ -134,7 +143,7 @@ sc start LabSentinelAgent
 | **Upgrade** agent | Jalankan installer versi baru (senyap pun bisa); pairing dipertahankan, layanan dihentikan dan dijalankan lagi tanpa dilaporkan sebagai pelanggaran |
 | **Upgrade** dashboard | Tutup dashboard, jalankan installer baru; database dipertahankan |
 | PC diganti / dipasang ulang Windows | Pasang agent seperti PC baru (buka pendaftaran sementara) |
-| Database dashboard hilang / diganti | Semua PC akan ditolak "perlu dipasangkan ulang"; buka pendaftaran dan jalankan `labsentinel-agent.exe --pair-only` di tiap PC |
+| Database dashboard hilang / diganti | Semua PC akan ditolak "perlu dipasangkan ulang"; buka pendaftaran, lalu di tiap PC buka menu Start → **Pasangkan PC ini ke dashboard** → **Pasangkan ulang** |
 | Mencabut satu PC | Hapus agent dari PC itu (*Apps & features* → Lab Sentinel Agent) |
 | **Hapus** agent | *Apps & features* → Lab Sentinel Agent. Layanan, aturan firewall, entri autostart, dan token PC dihapus; kebijakan browser dipulihkan |
 | **Hapus** dashboard | *Apps & features* → Lab Sentinel Dashboard. Database, bukti, dan laporan di ProgramData **sengaja disimpan** |
