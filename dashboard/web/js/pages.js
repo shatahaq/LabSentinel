@@ -946,6 +946,40 @@
     }));
   }
 
+  // Plain-language names for audit actions (ADR-0005: no technical terms in
+  // the UI). The raw code stays available as a tooltip for support.
+  const ACTION_LABEL = {
+    "command.pause": "Menjeda PC",
+    "command.pause.reapply": "Menjeda ulang PC yang tersambung kembali",
+    "command.resume": "Melanjutkan PC",
+    "command.lock_screen": "Mengunci layar",
+    "command.broadcast_message": "Mengirim pesan",
+    "command.set_dry_run": "Mengubah mode uji coba",
+    "command.set_stream": "Mengatur tampilan layar",
+    "rules.update": "Mengubah aturan",
+    "session.start": "Memulai sesi",
+    "session.end": "Mengakhiri sesi",
+    "session.schedule": "Menjadwalkan sesi",
+    "session.cancel": "Membatalkan sesi",
+    "session.missed": "Sesi terjadwal terlewat",
+    "pairing.success": "PC dipasangkan",
+    "pairing.failed": "Kode pemasangan salah",
+    "pairing.refused": "PC baru ditolak (pendaftaran ditutup)",
+    "pairing.rotate": "Membuat kode pemasangan baru",
+    "pairing.open": "Membuka pendaftaran PC baru",
+    "pairing.close": "Menutup pendaftaran PC baru",
+    "pairing.revoke": "Mencabut pemasangan PC",
+  };
+
+  function actionLabel(code) {
+    if (ACTION_LABEL[code]) return ACTION_LABEL[code];
+    if (code.endsWith(".hasil")) {
+      const base = ACTION_LABEL[code.slice(0, -".hasil".length)];
+      if (base) return `Hasil: ${base.charAt(0).toLowerCase()}${base.slice(1)}`;
+    }
+    return code;
+  }
+
   async function renderAudit() {
     const host = $("#audit-table");
     host.innerHTML = '<div class="skeleton" style="height:200px;margin:var(--s-4)"></div>';
@@ -967,13 +1001,13 @@
       <table class="table">
         <thead><tr>
           <th style="width:150px">Waktu</th><th style="width:130px">Oleh</th>
-          <th style="width:220px">Tindakan</th><th>Sasaran</th><th style="width:170px">Hasil</th>
+          <th style="width:300px">Tindakan</th><th>Sasaran</th><th style="width:170px">Hasil</th>
         </tr></thead>
         <tbody>${res.entries.map((e) => `
           <tr>
             <td class="num">${esc(datetime(e.ts))}</td>
             <td>${esc(e.actor)}</td>
-            <td class="mono">${esc(e.action)}</td>
+            <td title="${esc(e.action)}">${esc(actionLabel(e.action))}</td>
             <td class="truncate">${esc(e.target || "—")}</td>
             <td>${esc(e.result || "—")}</td>
           </tr>`).join("")}

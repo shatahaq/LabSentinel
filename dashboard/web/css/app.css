@@ -432,6 +432,8 @@ textarea.input { height: auto; padding: var(--s-2) var(--s-3); resize: vertical;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   gap: var(--s-3);
 }
+/* An empty state spans the whole grid instead of sitting in its first cell. */
+.pc-grid > .empty { grid-column: 1 / -1; }
 
 .pc {
   display: flex;
