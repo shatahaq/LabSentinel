@@ -165,6 +165,18 @@ async def test_no_dashboard_is_explained(tmp_path: Path) -> None:
     assert result.title == "Dashboard tidak ditemukan"  # type: ignore[attr-defined]
 
 
+async def test_typed_address_that_does_not_answer_is_named(tmp_path: Path) -> None:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    flow = SetupFlow(_config(tmp_path, None), service=FakeService(), timeout_s=1.5)
+    result = await _pair(flow, "123456", f"127.0.0.1:{port}")
+    assert result.title == "Dashboard tidak menjawab"  # type: ignore[attr-defined]
+    assert f"ws://127.0.0.1:{port}" in result.detail  # type: ignore[attr-defined]
+
+
 async def test_bad_input_never_reaches_the_network(tmp_path: Path) -> None:
     flow = SetupFlow(_config(tmp_path), service=FakeService(), timeout_s=1)
     assert (await _pair(flow, "12345")).title == "Kode belum benar"  # type: ignore[attr-defined]

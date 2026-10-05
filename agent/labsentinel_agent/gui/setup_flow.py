@@ -209,7 +209,7 @@ class SetupFlow:
 
         if exit_code != EXIT_OK:
             reason = agent.client.pairing_rejected if agent.client else None
-            return _explain_failure(exit_code, reason or "")
+            return _explain_failure(exit_code, reason or "", address)
 
         if address:
             self._remember_address(address)
@@ -248,7 +248,7 @@ class SetupFlow:
             log.warning("could not save the dashboard address to %s", path, exc_info=True)
 
 
-def _explain_failure(exit_code: int, reason: str) -> SetupResult:
+def _explain_failure(exit_code: int, reason: str, address: str = "") -> SetupResult:
     if exit_code == EXIT_PAIRING_REJECTED:
         if "salah" in reason:
             return SetupResult(False, "Kode salah",
@@ -263,6 +263,11 @@ def _explain_failure(exit_code: int, reason: str) -> SetupResult:
                                f"Terlalu banyak kode salah dari PC ini; {reason}.", exit_code)
         return SetupResult(False, "Pemasangan ditolak",
                            f"Dashboard menolak: {reason or 'tanpa alasan'}.", exit_code)
+    if exit_code == EXIT_NO_DASHBOARD and address:
+        return SetupResult(False, "Dashboard tidak menjawab",
+                           f"Tidak ada dashboard yang menjawab di {address}. Pastikan "
+                           "dashboard pengawas sedang berjalan dan alamatnya benar, atau "
+                           "kosongkan alamat agar dicari otomatis.", exit_code)
     if exit_code == EXIT_NO_DASHBOARD:
         return SetupResult(False, "Dashboard tidak ditemukan",
                            "Pastikan dashboard pengawas sedang berjalan dan PC ini berada di "
