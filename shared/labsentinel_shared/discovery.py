@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import socket
 from dataclasses import dataclass
 
@@ -21,6 +22,8 @@ SERVICE_ID = "labsentinel"
 DISCOVERY_VERSION = 1
 DEFAULT_DISCOVERY_PORT = 50123
 PROBE_INTERVAL_S = 1.5  # an agent re-asks this often while it looks
+
+log = logging.getLogger("labsentinel.discovery")
 
 _PROBE = {"service": SERVICE_ID, "kind": "probe", "v": DISCOVERY_VERSION}
 
@@ -113,12 +116,15 @@ def _dashboard_socket(port: int) -> socket.socket:
             sock.setsockopt(socket.SOL_SOCKET, exclusive, 1)
             sock.bind(("", port))
             return sock
-        except OSError:
+        except OSError as exc:
+            log.info("discovery port %s is in use (%s); sharing it", port, exc)
             sock.close()
     sock = _broadcast_socket()
     # Bind to the discovery port to also receive probes.
-    with contextlib.suppress(OSError):
+    try:
         sock.bind(("", port))
+    except OSError as exc:
+        log.warning("cannot listen for discovery probes on UDP %s: %s", port, exc)
     return sock
 
 
@@ -146,9 +152,18 @@ class DashboardBeaconServer:
         self._task = asyncio.ensure_future(self._run())
 
     async def _run(self) -> None:
+        try:
+            await self._serve()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("discovery beacon stopped")
+
+    async def _serve(self) -> None:
         assert self._sock is not None
         loop = asyncio.get_running_loop()
         payload = self._beacon.to_bytes()
+        answered: set[str] = set()
         while not self._stop.is_set():
             with contextlib.suppress(OSError):
                 self._sock.sendto(payload, ("255.255.255.255", self._port))
@@ -162,8 +177,14 @@ class DashboardBeaconServer:
                 except (TimeoutError, OSError):
                     continue
                 if is_probe(data):
-                    with contextlib.suppress(OSError):
+                    try:
                         self._sock.sendto(payload, addr)
+                    except OSError as exc:
+                        log.warning("could not answer a discovery probe from %s: %s", addr, exc)
+                        continue
+                    if addr[0] not in answered:  # once per PC, not every probe
+                        answered.add(addr[0])
+                        log.info("answered a discovery probe from %s", addr[0])
 
     async def stop(self) -> None:
         self._stop.set()
@@ -210,6 +231,8 @@ async def discover_dashboard(
         except OSError:  # held exclusively by a dashboard on this PC
             listen.close()
             listen = None
+        log.debug("looking for a dashboard on UDP %s (shared port: %s)", port,
+                  "yes" if listen is not None else "no")
 
         socks = [probe] + ([listen] if listen is not None else [])
         pending = {
