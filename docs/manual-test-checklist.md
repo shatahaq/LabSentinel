@@ -175,10 +175,54 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
 
 ## M6 — Mode, laporan, anti-tamper
 
+Sudah terbukti otomatis:
+
+- **Laporan** (`tests/unit/test_reports.py`): isi PDF dibaca balik dengan
+  pypdf (nama sesi, PC, jenis, catatan uji coba/judul jendela, "Halaman X dari
+  Y", gambar bukti tertanam, bukti hilang disebutkan), Excel dibaca balik dengan
+  openpyxl (tanggal asli, filter, header beku). Diunduh lewat tombol di browser
+  sungguhan terhadap demo lab (PDF & Excel).
+- **Anti-tamper** (`tests/integration/test_anti_tamper.py`,
+  `tests/unit/test_lifecycle.py`): proses agent **sungguhan** dibunuh SIGKILL →
+  start berikutnya melaporkan "Agent dihentikan paksa saat PC menyala" ke
+  dashboard; SIGTERM → berhenti bersih, **tidak** dilaporkan; stop layanan
+  manual → dilaporkan "dihentikan secara manual"; instans kedua ditolak tanpa
+  mengganggu yang berjalan; watchdog menangkap loop macet. Toast merah muncul
+  di dashboard sungguhan setelah `kill -9` (diperiksa di browser).
+
+Yang **belum bisa** diverifikasi tanpa Windows + Administrator:
+
 - [ ] Ganti profil (Ujian/Praktikum/Bebas) satu klik → agent menyesuaikan.
-- [ ] Ekspor laporan PDF & Excel berisi riwayat pelanggaran per sesi.
-- [ ] 🔑 Kill paksa proses agent (Task Manager) → watchdog/Service
-  menghidupkannya lagi; dashboard mencatat **pelanggaran tamper**.
+- [ ] Laporan PDF terbuka benar di Adobe Reader/Edge; nama PC dan judul jendela
+  berhuruf non-Latin tampil (font Segoe UI/Arial dipakai otomatis).
+- [ ] Laporan Excel terbuka di Microsoft Excel tanpa peringatan perbaikan;
+  kolom tanggal bisa diurutkan dan disaring.
+- [ ] 🔑 `labsentinel-agent --pair KODE --pair-only` lalu
+  `labsentinel-service install` → layanan **Lab Sentinel Agent** muncul di
+  `services.msc`, Startup type *Automatic*, berjalan sebagai *Local System*.
+- [ ] 🔑 Tab *Recovery* di `services.msc`: First/Second failure = Restart
+  the Service, Subsequent = Restart, "Enable actions for stops with errors"
+  tercentang.
+- [ ] 🔑 **Kill paksa** `labsentinel-service.exe` dari Task Manager → layanan
+  hidup lagi ≤ 10 detik; dashboard menampilkan toast merah "agent dihentikan
+  tidak wajar" dan baris di Laporan.
+- [ ] 🔑 `net stop LabSentinelAgent` → kebijakan browser dipulihkan
+  (`chrome://policy` kosong dari entri Lab Sentinel); `net start` → dashboard
+  mencatat "Layanan agent dihentikan secara manual".
+- [ ] Restart Windows normal (Start → Restart) → **tidak** ada catatan tamper.
+- [ ] Cabut daya / tahan tombol power → setelah menyala, catatan berbunyi "PC
+  mati atau restart tanpa shutdown normal".
+- [ ] 🔑 Jalankan `labsentinel-agent` manual saat layanan aktif → pesan "Agent
+  Lab Sentinel sudah berjalan di PC ini", layanan tidak terganggu.
+- [ ] Login sebagai peserta (non-admin) → ikon tray muncul otomatis
+  (`HKLM\...\Run\LabSentinelTray`); login sebagai peserta lain → ikon juga
+  muncul (log helper di `%LOCALAPPDATA%\LabSentinel\tray.log` masing-masing).
+- [ ] 🔑 Hapus nilai `LabSentinelTray` dari kunci Run lalu restart layanan →
+  nilainya kembali.
+- [ ] 🔑 `icacls C:\ProgramData\LabSentinel\agent\token` hanya menampilkan
+  `NT AUTHORITY\SYSTEM` dan `BUILTIN\Administrators`.
+- [ ] 🔑 `labsentinel-service remove` → layanan hilang, entri Run hilang,
+  kebijakan browser bersih.
 
 ## M7 — Packaging & performa
 
