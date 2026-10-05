@@ -109,3 +109,44 @@ async def test_graceful_close_windowless_falls_through_to_not_closed() -> None:
     finally:
         child.kill()
         child.wait(timeout=5)
+
+
+def test_spawn_constants_match_pywin32() -> None:
+    """The Win32 values spawn_in_session spells out agree with pywin32's where it has them."""
+    import ntsecuritycon
+    import win32con
+    import win32process
+    import win32security
+
+    from labsentinel_agent.desktop import spawn
+
+    assert spawn.TOKEN_ASSIGN_PRIMARY == ntsecuritycon.TOKEN_ASSIGN_PRIMARY
+    assert spawn.TOKEN_DUPLICATE == ntsecuritycon.TOKEN_DUPLICATE
+    assert spawn.TOKEN_QUERY == ntsecuritycon.TOKEN_QUERY
+    assert spawn.TOKEN_ADJUST_DEFAULT == ntsecuritycon.TOKEN_ADJUST_DEFAULT
+    assert spawn.TOKEN_ALL_ACCESS == ntsecuritycon.TOKEN_ALL_ACCESS
+    assert win32security.TokenSessionId == spawn.TOKEN_SESSION_ID_CLASS
+    assert win32security.SecurityImpersonation == spawn.SECURITY_IMPERSONATION
+    assert win32security.TokenPrimary == spawn.TOKEN_PRIMARY
+    assert spawn.CREATE_NO_WINDOW == win32process.CREATE_NO_WINDOW
+    assert spawn.CREATE_NEW_PROCESS_GROUP == win32process.CREATE_NEW_PROCESS_GROUP
+    assert spawn.STARTF_USESHOWWINDOW == win32con.STARTF_USESHOWWINDOW
+    assert spawn.SW_HIDE == win32con.SW_HIDE
+
+
+def test_own_token_can_be_opened_with_the_rights_spawn_asks_for() -> None:
+    """Opening our own token with these rights must not fail (any user may)."""
+    import win32api
+    import win32security
+
+    from labsentinel_agent.desktop.spawn import (
+        OWN_TOKEN_RIGHTS,
+        SECURITY_IMPERSONATION,
+        TOKEN_ALL_ACCESS,
+        TOKEN_PRIMARY,
+    )
+
+    own = win32security.OpenProcessToken(win32api.GetCurrentProcess(), OWN_TOKEN_RIGHTS)
+    dup = win32security.DuplicateTokenEx(own, SECURITY_IMPERSONATION, TOKEN_ALL_ACCESS,
+                                         TOKEN_PRIMARY, None)
+    assert dup

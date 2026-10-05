@@ -7,7 +7,8 @@ screen, but the participant (a standard user) cannot end it.
 
 :class:`WorkerSupervisor` holds the decisions (when to start one, how often)
 and is tested everywhere; :func:`spawn_in_session` is the Windows call itself
-and is verified by hand (docs/manual-test-checklist.md).
+and is checked by the Windows end-to-end job and by hand
+(docs/manual-test-checklist.md).
 """
 
 from __future__ import annotations
@@ -24,6 +25,24 @@ log = logging.getLogger("labsentinel.agent.desktop.spawn")
 NO_SESSION = 0xFFFFFFFF  # WTSGetActiveConsoleSessionId: nobody at the console
 CHECK_EVERY_S = 3.0
 RESPAWN_AFTER_S = 15.0  # give a fresh worker time to connect before trying again
+
+# Win32 values from winnt.h / winbase.h. pywin32 does not export all of them
+# (win32security has no TOKEN_ADJUST_SESSIONID), so they are spelled out here.
+TOKEN_ASSIGN_PRIMARY = 0x0001
+TOKEN_DUPLICATE = 0x0002
+TOKEN_QUERY = 0x0008
+TOKEN_ADJUST_DEFAULT = 0x0080
+TOKEN_ADJUST_SESSIONID = 0x0100
+TOKEN_ALL_ACCESS = 0x000F01FF
+TOKEN_SESSION_ID_CLASS = 12  # TOKEN_INFORMATION_CLASS.TokenSessionId
+SECURITY_IMPERSONATION = 2  # SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation
+TOKEN_PRIMARY = 1  # TOKEN_TYPE.TokenPrimary
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+CREATE_NO_WINDOW = 0x08000000
+STARTF_USESHOWWINDOW = 0x00000001
+SW_HIDE = 0
+OWN_TOKEN_RIGHTS = (TOKEN_DUPLICATE | TOKEN_QUERY | TOKEN_ASSIGN_PRIMARY
+                    | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID)
 
 
 class WorkerSupervisor:
@@ -140,30 +159,22 @@ def spawn_in_session(session_id: int, command: str) -> bool:  # pragma: no cover
     if sys.platform != "win32":
         return False
     import win32api
-    import win32con
     import win32process
     import win32security
 
     try:
-        own = win32security.OpenProcessToken(
-            win32api.GetCurrentProcess(),
-            win32security.TOKEN_DUPLICATE | win32security.TOKEN_QUERY
-            | win32security.TOKEN_ASSIGN_PRIMARY | win32security.TOKEN_ADJUST_DEFAULT
-            | win32security.TOKEN_ADJUST_SESSIONID,
-        )
+        own = win32security.OpenProcessToken(win32api.GetCurrentProcess(), OWN_TOKEN_RIGHTS)
         token = win32security.DuplicateTokenEx(
-            own, win32security.SecurityImpersonation, win32security.TOKEN_ALL_ACCESS,
-            win32security.TokenPrimary, None,
+            own, SECURITY_IMPERSONATION, TOKEN_ALL_ACCESS, TOKEN_PRIMARY, None,
         )
-        win32security.SetTokenInformation(token, win32security.TokenSessionId, session_id)
+        win32security.SetTokenInformation(token, TOKEN_SESSION_ID_CLASS, session_id)
         startup = win32process.STARTUPINFO()
         startup.lpDesktop = "winsta0\\default"
-        startup.dwFlags = win32con.STARTF_USESHOWWINDOW
-        startup.wShowWindow = win32con.SW_HIDE
+        startup.dwFlags = STARTF_USESHOWWINDOW
+        startup.wShowWindow = SW_HIDE
         proc, thread, _pid, _tid = win32process.CreateProcessAsUser(
             token, None, command, None, None, False,
-            win32process.CREATE_NO_WINDOW | win32process.CREATE_NEW_PROCESS_GROUP,
-            None, None, startup,
+            CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP, None, None, startup,
         )
         win32api.CloseHandle(thread)
         win32api.CloseHandle(proc)
