@@ -74,8 +74,25 @@ def press(vk: int) -> None:
 
 
 def type_digits(text: str) -> None:
+    """Type digits and dots (enough for a code or an IPv4 address)."""
     for ch in text:
-        press(0x30 + int(ch))
+        press(0xBE if ch == "." else 0x30 + int(ch))  # 0xBE = VK_OEM_PERIOD
+
+
+def alt(vk: int) -> None:
+    user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+    press(vk)
+    user32.keybd_event(0x12, 0, 2, 0)
+    time.sleep(0.2)
+
+
+def wait_for_rejection(before: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if rejections() > before:
+            return True
+        time.sleep(0.5)
+    return False
 
 
 def paired() -> bool:
@@ -118,10 +135,21 @@ def main() -> None:
     shot(hwnd, out, "2-kode-diketik")
     before = rejections()
     press(0x0D)  # Enter = Pasangkan
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline and rejections() == before:
-        time.sleep(0.5)
-    print("dashboard turned the wrong code away:", rejections() > before, flush=True)
+    found = wait_for_rejection(before, timeout=60)
+    print("agent found the dashboard by itself (UDP discovery):", found, flush=True)
+    if not found:
+        # Note it for the job (a later step fails on it) and carry on with the
+        # address typed in, so the rest of the installation is still checked.
+        (out / "DISCOVERY-FAILED.txt").write_text("no dashboard found by discovery\n")
+        shot(hwnd, out, "3a-dashboard-tidak-ditemukan")
+        focus(hwnd)
+        alt(0x41)  # Alt+A opens "Alamat dashboard (opsional)"
+        type_digits("127.0.0.1")
+        shot(hwnd, out, "3b-alamat-diisi")
+        before = rejections()
+        press(0x0D)
+        print("wrong code reached the dashboard by address:",
+              wait_for_rejection(before, timeout=60), flush=True)
     time.sleep(2)  # the window shows the reason once the agent hears back
     shot(hwnd, out, "3-kode-salah")
 

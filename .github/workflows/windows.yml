@@ -96,6 +96,16 @@ jobs:
           "dashboard listening on 8765"
           python packaging/ci/ws_probe.py ws://127.0.0.1:8765
 
+      - name: UDP discovery diagnostics
+        shell: pwsh
+        run: |
+          Get-NetUDPEndpoint -LocalPort 50123 -ErrorAction SilentlyContinue |
+            Select-Object LocalAddress, LocalPort, OwningProcess,
+              @{n="Process"; e={(Get-Process -Id $_.OwningProcess).ProcessName}} | Format-Table -AutoSize
+          Get-NetFirewallProfile | Format-Table Name, Enabled, DefaultInboundAction
+          Get-NetConnectionProfile | Format-Table Name, InterfaceAlias, NetworkCategory
+          python packaging/ci/udp_probe.py
+
       - name: Install the agent by double-click (pairing window, screenshots)
         shell: pwsh
         run: |
@@ -182,7 +192,9 @@ jobs:
       - name: Publish screenshots to docs/screenshots/windows
         # Only when the pushed commit asks for it with "[screenshots]"; the
         # commit made here carries [skip ci] so it does not start another run.
-        if: success() && contains(github.event.head_commit.message, '[screenshots]')
+        if: >-
+          success() && contains(github.event.head_commit.message, '[screenshots]')
+          && hashFiles('shots/DISCOVERY-FAILED.txt') == ''
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force docs\screenshots\windows | Out-Null
@@ -208,3 +220,10 @@ jobs:
         with:
           name: e2e-logs-and-screenshots
           path: e2e-logs
+      - name: The agent found the dashboard by itself (UDP discovery)
+        shell: pwsh
+        run: |
+          if (Test-Path shots\DISCOVERY-FAILED.txt) {
+            throw "the pairing window did not find the dashboard by discovery; the address had to be typed"
+          }
+          "discovery worked"
