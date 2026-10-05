@@ -244,7 +244,10 @@
 
     global.addEventListener("hashchange", () => {
       const page = location.hash.replace("#", "") || "beranda";
-      if (page !== currentPage) goto(page, { fromHash: true });
+      if (page === currentPage) return;
+      // Back/forward while a PC's detail is open: leave the dialog with the page.
+      if (!document.getElementById("scrim").hidden) C.closeDialog();
+      goto(page, { fromHash: true });
     });
 
     // Stop asking agents for frames while the window is hidden.
