@@ -68,6 +68,11 @@ def cmd_check_connected() -> None:
                                     "FROM agents"))
     for r in agents:  # type: ignore[union-attr]
         print("connected:", dict(r))
+    # The service runs as SYSTEM; the dashboard must name the participant.
+    named = wait_for("the signed-in user shown for the PC",
+                     lambda: query("SELECT username FROM agents "
+                                   "WHERE username != '' AND upper(username) != 'SYSTEM'"))
+    print("participant shown as:", [r["username"] for r in named])  # type: ignore[union-attr]
 
     # Desktop worker: the part only a real Windows session can show.
     worker = log_lines(AGENT_LOG, "desktop worker", "desktop access")
