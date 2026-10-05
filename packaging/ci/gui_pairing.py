@@ -21,6 +21,7 @@ from PIL import ImageGrab
 
 user32 = ctypes.windll.user32  # type: ignore[attr-defined]
 DB = Path(r"C:\ProgramData\LabSentinel\dashboard\labsentinel.sqlite")
+DASHBOARD_LOG = Path(r"C:\ProgramData\LabSentinel\dashboard\logs\dashboard.log")
 TITLE_PREFIX = "Lab Sentinel Agent"  # the pairing window
 INSTALLER_TITLE = "Setup - Lab Sentinel Agent"  # Inno Setup's wizard
 
@@ -88,6 +89,15 @@ def paired() -> bool:
         return False
 
 
+def rejections() -> int:
+    """How many agents the dashboard has turned away (e.g. for a wrong code)."""
+    try:
+        text = DASHBOARD_LOG.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    return text.count("rejected agent from")
+
+
 def main() -> None:
     code, out = sys.argv[1], Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
@@ -106,8 +116,13 @@ def main() -> None:
 
     type_digits(wrong)
     shot(hwnd, out, "2-kode-diketik")
+    before = rejections()
     press(0x0D)  # Enter = Pasangkan
-    time.sleep(6)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and rejections() == before:
+        time.sleep(0.5)
+    print("dashboard turned the wrong code away:", rejections() > before, flush=True)
+    time.sleep(2)  # the window shows the reason once the agent hears back
     shot(hwnd, out, "3-kode-salah")
 
     focus(hwnd)
