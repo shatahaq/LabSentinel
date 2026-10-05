@@ -171,6 +171,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "service still installed after uninstall" }
           if (Test-Path C:\ProgramData\LabSentinel\agent\token) { throw "token left behind" }
           "uninstalled cleanly"
+          exit 0  # sc.exe's "no such service" (1060) above is the expected result
 
       - name: Silent install for a whole lab (/PAIRCODE)
         shell: pwsh
