@@ -295,6 +295,25 @@ def test_supervisor_follows_a_session_switch() -> None:
     assert sup.tick() and spawned == [4]
 
 
+def test_supervisor_grace_lets_the_login_entry_start_it_first() -> None:
+    spawned: list[int] = []
+    visible = [False]
+    clock = Clock()
+    sup = WorkerSupervisor(
+        active_session=lambda: 2, connected_session=lambda: 2 if visible[0] else None,
+        spawn=lambda s: spawned.append(s) is None, clock=clock, grace_s=20.0,
+    )
+    assert not sup.tick()  # just logged in: give the Run key a chance
+    clock.now = 10.0
+    visible[0] = True  # the login entry started it
+    assert not sup.tick()
+    visible[0] = False  # participant kills the indicator
+    clock.now = 15.0
+    assert not sup.tick()
+    clock.now = 36.0  # missing for over 20 s
+    assert sup.tick() and spawned == [2]
+
+
 @pytest.mark.parametrize("session", [NO_SESSION, 0, -1])
 def test_supervisor_waits_while_nobody_is_at_the_console(session: int) -> None:
     sup = WorkerSupervisor(active_session=lambda: session, connected_session=lambda: None,

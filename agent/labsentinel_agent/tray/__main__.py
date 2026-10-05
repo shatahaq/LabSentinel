@@ -20,6 +20,7 @@ import sys
 import threading
 from pathlib import Path
 
+from labsentinel_agent.lifecycle import InstanceLock
 from labsentinel_agent.tray.helper import TrayHelper
 from labsentinel_agent.tray.icon import NullIndicator, PystrayIndicator, TrayIndicator
 from labsentinel_shared.config import AgentConfig
@@ -59,6 +60,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Run without a real tray icon (diagnostics).",
     )
     args = parser.parse_args(argv)
+
+    # One indicator per user: the login Run key and the service may both
+    # start one; the second simply leaves.
+    lock = InstanceLock(tray_log_path(args.data_dir).with_name("tray.lock"))
+    try:
+        if not lock.acquire():
+            return 0
+    except OSError:
+        pass  # cannot lock (odd profile): showing two icons beats showing none
 
     try:
         setup_logging(log_path=tray_log_path(args.data_dir), level="INFO")

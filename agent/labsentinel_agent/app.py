@@ -86,6 +86,8 @@ EXIT_NO_DASHBOARD = 5
 PAIR_ONLY_TIMEOUT_S = 60.0
 
 MARKER_TOUCH_S = 15.0
+TRAY_GRACE_S = 20.0  # indicator missing this long in a session: start the helper
+TRAY_RESPAWN_S = 30.0
 
 NOT_PAIRED_MESSAGE = (
     "\nPC ini belum dipasangkan.\n"
@@ -413,9 +415,11 @@ class LabSentinelAgent:
 
     async def _supervise_desktop_worker(self) -> None:
         """Service mode: keep a desktop worker in the active console session."""
+        from labsentinel_agent import autostart
         from labsentinel_agent.desktop.spawn import (
             WorkerSupervisor,
             active_console_session,
+            spawn_as_user,
             spawn_in_session,
             worker_command,
         )
@@ -428,8 +432,25 @@ class LabSentinelAgent:
             connected_session=lambda: proxy.session_id,
             spawn=lambda session: spawn_in_session(session, command),
         )
+        # Transparency: if the participant's indicator is gone for a while
+        # (helper closed or killed), start it again as that participant. The
+        # grace period lets the login Run key start it first; the helper
+        # itself refuses to run twice for one user.
+        tray_command = autostart.tray_command(data_dir=self.config.data_dir)
+        tray_supervisor = WorkerSupervisor(
+            active_session=active_console_session,
+            connected_session=lambda: (
+                active_console_session() if self.tray.indicator_visible else None
+            ),
+            spawn=lambda session: spawn_as_user(session, tray_command),
+            grace_s=TRAY_GRACE_S,
+            respawn_after_s=TRAY_RESPAWN_S,
+        )
         self._someone_logged_in = supervisor.someone_logged_in
-        await asyncio.gather(supervisor.run(), self._sweep_when_desktop_arrives())
+        await asyncio.gather(
+            supervisor.run(), tray_supervisor.run(every_s=5.0),
+            self._sweep_when_desktop_arrives(),
+        )
 
     async def _sweep_when_desktop_arrives(self) -> None:
         """Re-check running apps whenever a desktop worker (re)connects.

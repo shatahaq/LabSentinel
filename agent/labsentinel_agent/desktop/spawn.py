@@ -35,12 +35,17 @@ class WorkerSupervisor:
         spawn: Callable[[int], bool],
         clock: Callable[[], float] = time.monotonic,
         respawn_after_s: float | None = None,
+        grace_s: float = 0.0,
     ) -> None:
         self._active = active_session
         self._connected = connected_session
         self._spawn = spawn
         self._clock = clock
         self._respawn_after = RESPAWN_AFTER_S if respawn_after_s is None else respawn_after_s
+        # How long a session must be missing its process before we step in;
+        # lets something else (e.g. the login Run key) start it first.
+        self._grace = grace_s
+        self._missing_since: dict[int, float] = {}
         self._last_spawn: dict[int, float] = {}
         self.spawned = 0
 
@@ -54,7 +59,12 @@ class WorkerSupervisor:
         if session in (NO_SESSION, -1, 0):
             return False  # nobody at the console: nothing to watch
         if self._connected() == session:
+            self._missing_since.pop(session, None)
             return False  # the right worker is already serving
+        now = self._clock()
+        missing_since = self._missing_since.setdefault(session, now)
+        if now - missing_since < self._grace:
+            return False
         last = self._last_spawn.get(session)
         if last is not None and self._clock() - last < self._respawn_after:
             return False  # one is starting up; do not pile them on
@@ -92,6 +102,37 @@ def active_console_session() -> int:
     import win32ts
 
     return int(win32ts.WTSGetActiveConsoleSessionId())
+
+
+def spawn_as_user(session_id: int, command: str) -> bool:  # pragma: no cover - Windows
+    """Start ``command`` as the user logged in to ``session_id`` (the tray helper).
+
+    The indicator must run as the participant, in their session, so it shows
+    in their notification area. Used when the helper has gone missing.
+    """
+    if sys.platform != "win32":
+        return False
+    import win32api
+    import win32con
+    import win32process
+    import win32profile
+    import win32ts
+
+    try:
+        token = win32ts.WTSQueryUserToken(session_id)
+        env = win32profile.CreateEnvironmentBlock(token, False)
+        startup = win32process.STARTUPINFO()
+        startup.lpDesktop = "winsta0\\default"
+        proc, thread, _pid, _tid = win32process.CreateProcessAsUser(
+            token, None, command, None, None, False,
+            win32con.CREATE_UNICODE_ENVIRONMENT, env, None, startup,
+        )
+        win32api.CloseHandle(thread)
+        win32api.CloseHandle(proc)
+        return True
+    except Exception:
+        log.exception("could not start the tray helper in session %d", session_id)
+        return False
 
 
 def spawn_in_session(session_id: int, command: str) -> bool:  # pragma: no cover - Windows
