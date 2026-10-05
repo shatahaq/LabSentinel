@@ -59,6 +59,17 @@ log = logging.getLogger("labsentinel.agent.app")
 AGENT_VERSION = "0.1.0"
 _IS_WINDOWS = sys.platform == "win32"
 
+# Process exit codes, so an installer or service wrapper can tell what happened.
+EXIT_OK = 0
+EXIT_NOT_PAIRED = 2
+EXIT_PAIRING_REJECTED = 3
+
+NOT_PAIRED_MESSAGE = (
+    "\nPC ini belum dipasangkan.\n"
+    "Jalankan sekali dengan kode 6 digit yang tampil di dashboard (halaman Aturan):\n"
+    "    labsentinel-agent --pair KODE\n"
+)
+
 
 # ---------------------------------------------------------------- identity
 def stable_agent_id(config: AgentConfig) -> str:
@@ -149,7 +160,8 @@ class LabSentinelAgent:
         self.client: DashboardClient | None = None
 
     # ------------------------------------------------------------ lifecycle
-    async def run(self) -> None:
+    async def run(self) -> int:
+        """Run until stopped or until pairing fails. Returns a process exit code."""
         # A leftover policy backup means the last run ended abnormally; put the
         # machine back the way we found it before doing anything else.
         if self.policy.recover_if_needed():
@@ -163,18 +175,17 @@ class LabSentinelAgent:
         await self.tray.start()
         self.core.publish_status()
 
-        token = read_token(self.config)
+        # An explicit --pair always starts a fresh pairing, even with a token on
+        # disk: that token may belong to a dashboard database that was reset,
+        # and while we present it the dashboard would never look at the code.
+        token = None if self.pairing_code else read_token(self.config)
         if token is None and not self.pairing_code:
             log.error(
                 "this PC is not paired yet; run once with --pair <kode 6 digit> "
                 "(the code is shown on the dashboard)"
             )
-            print(
-                "\nPC ini belum dipasangkan.\n"
-                "Jalankan sekali dengan kode 6 digit dari dashboard:\n"
-                "    python -m labsentinel_agent --pair 123456\n"
-            )
-            return
+            print(NOT_PAIRED_MESSAGE)
+            return EXIT_NOT_PAIRED
 
         self.client = DashboardClient(
             identity=AgentIdentity(
@@ -186,7 +197,7 @@ class LabSentinelAgent:
             ),
             token=token,
             pairing_code=self.pairing_code,
-            on_token_issued=lambda t: store_token(self.config, t),
+            on_token_issued=self._on_token_issued,
             state_provider=self.core.state,
             metrics_provider=_metrics,
             on_ruleset=self.core.on_ruleset,
@@ -202,18 +213,39 @@ class LabSentinelAgent:
 
         await self.core.sweep_running()
 
+        link = asyncio.ensure_future(self.client.run(self._find_dashboard))
         tasks = [
-            asyncio.ensure_future(self.client.run(self._find_dashboard)),
+            link,
             asyncio.ensure_future(self.core.run_detection()),
             asyncio.ensure_future(self.streamer.run()),
             asyncio.ensure_future(self.titles.run()),
             asyncio.ensure_future(self._watch_connection()),
         ]
         try:
-            await asyncio.gather(*tasks)
+            pending = set(tasks)
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    task.result()  # surface a crash instead of hiding it
+                if link in done:  # the link only ends when stopped or refused
+                    break
         finally:
             for task in tasks:
                 task.cancel()
+
+        if self.client.pairing_rejected:
+            print(
+                f"\nPemasangan ditolak oleh dashboard: {self.client.pairing_rejected}.\n"
+                "Periksa kode di halaman Aturan dashboard, lalu jalankan lagi:\n"
+                "    labsentinel-agent --pair KODE\n"
+            )
+            return EXIT_PAIRING_REJECTED
+        return EXIT_OK
+
+    def _on_token_issued(self, token: str) -> None:
+        store_token(self.config, token)
+        log.info("this PC is now paired; token stored at %s", self.config.token_file)
+        print("\nPC ini berhasil dipasangkan. Kode tidak perlu diketik lagi.\n")
 
     async def _watch_connection(self) -> None:
         """Keep the participant's indicator honest about connectivity."""
@@ -238,13 +270,23 @@ class LabSentinelAgent:
         return beacon.ws_url
 
     async def shutdown(self) -> None:
-        """Always hand the machine back in the state we found it."""
+        """Always hand the machine back in the state we found it.
+
+        Each step is isolated: one part failing to stop must never keep the
+        browser policy in place, or a lab PC would stay with sites blocked and
+        nobody watching.
+        """
         log.info("agent stopping")
-        self.titles.stop()
-        self.streamer.stop()
-        self.core.stop()
-        with contextlib.suppress(Exception):
-            self.policy.clear()  # never leave sites blocked with nobody watching
+        for step in (self.titles.stop, self.streamer.stop, self.core.stop):
+            try:
+                step()
+            except Exception:
+                log.exception("error while stopping %s", getattr(step, "__qualname__", step))
+        try:
+            self.policy.clear()
+        except Exception:
+            # The backup file is kept, so the next start restores it.
+            log.exception("could not restore the browser policy now; will retry on next start")
         if self.client is not None:
             with contextlib.suppress(Exception):
                 await self.client.stop()
@@ -382,15 +424,16 @@ def main(argv: list[str] | None = None) -> int:
 
     agent = LabSentinelAgent(config, pairing_code=args.pair)
 
-    async def runner() -> None:
+    async def runner() -> int:
         try:
-            await agent.run()
+            return await agent.run()
         finally:
             await agent.shutdown()
 
-    with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(runner())
-    return 0
+    try:
+        return asyncio.run(runner())
+    except KeyboardInterrupt:
+        return EXIT_OK
 
 
 if __name__ == "__main__":

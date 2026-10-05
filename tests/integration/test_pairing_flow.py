@@ -181,7 +181,7 @@ async def test_pair_with_code_then_reconnect_with_stored_token(
     assert [r.action for r in db.list_audit()].count("pairing.success") == 1
 
 
-async def test_wrong_code_never_connects(
+async def test_wrong_code_never_connects_and_stops_retrying(
     server: tuple[WebSocketServer, Events], pairing: PairingService, db: Database
 ) -> None:
     srv, events = server
@@ -189,19 +189,37 @@ async def test_wrong_code_never_connects(
     wrong = "100000" if pairing.code != "100000" else "100001"
     issued: list[str] = []
     client = _client(token=None, code=wrong, issued=issued, rulesets=[])
-    async with _running(client, url):
-        await asyncio.sleep(0.5)  # several attempts at the test backoff
+    async with _running(client, url) as task:
+        # The client gives up on its own instead of retrying the same bad code.
+        await asyncio.wait_for(asyncio.shield(task), timeout=5)
         assert not client.connected.is_set()
 
+    assert client.pairing_rejected is not None
+    assert "salah" in client.pairing_rejected
     assert issued == []
     assert events.connected == []
     assert db.get_agent_token_hash("lab-pc-07") is None
-    # Retries with a wrong code count as guesses: the address ends up locked.
+    # One wrong attempt, not a burst of retries: the PC has not locked itself
+    # out, so the admin can immediately try again with the right code.
+    assert [r.action for r in db.list_audit()].count("pairing.failed") == 1
     result = pairing.pair(
         agent_id="lab-pc-07", hostname="LAB-PC-07", code=pairing.code, source="127.0.0.1"
     )
-    assert not result.ok
-    assert "tunggu" in result.reason
+    assert result.ok
+
+
+async def test_unknown_token_keeps_retrying(
+    server: tuple[WebSocketServer, Events], pairing: PairingService
+) -> None:
+    """A revoked token is not a typo: keep trying so a re-pair or a restored
+    dashboard database brings the PC back without anyone touching it."""
+    srv, events = server
+    client = _client(token="revoked-token", code=None, issued=[], rulesets=[])
+    async with _running(client, f"ws://127.0.0.1:{srv.bound_port}") as task:
+        await asyncio.sleep(0.4)
+        assert not task.done()
+        assert client.pairing_rejected is None
+    assert events.connected == []
 
 
 async def test_closed_pairing_rejects_new_pc_over_the_wire(

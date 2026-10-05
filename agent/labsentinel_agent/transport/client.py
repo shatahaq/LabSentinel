@@ -109,6 +109,8 @@ class DashboardClient:
         self._stop = asyncio.Event()
         self._conn: websockets.ClientConnection | None = None
         self.connected = asyncio.Event()
+        # Set when the dashboard refused our pairing code; run() then returns.
+        self.pairing_rejected: str | None = None
 
     @property
     def agent_id(self) -> str:
@@ -195,9 +197,17 @@ class DashboardClient:
             return None
         env = decode(raw)
         if isinstance(env.payload, RejectPayload):
-            log.error("dashboard rejected agent: %s", env.payload.reason)
-            # Rejection is terminal for this URL; raise to trigger backoff.
-            raise ProtocolError(f"rejected: {env.payload.reason}")
+            reason = env.payload.reason
+            log.error("dashboard rejected agent: %s", reason)
+            if self._token is None and self._pairing_code:
+                # A refused pairing code does not become right by retrying, and
+                # every retry counts as a guess toward the dashboard's lockout
+                # of this PC. Stop and let the person installing see why.
+                self.pairing_rejected = reason
+                self._stop.set()
+            # Otherwise (e.g. a revoked token) keep retrying with backoff: the
+            # admin may re-pair or restore the dashboard database.
+            raise ProtocolError(f"rejected: {reason}")
         if isinstance(env.payload, WelcomePayload):
             return env.payload
         return None
