@@ -719,8 +719,8 @@
           }
           const ok = await confirmHere({
             title: "Bekukan keyboard & mouse PC ini?",
-            message: "Peserta tidak bisa memakai keyboard dan mouse sampai Anda cairkan. "
-              + "Layar peserta menampilkan pesan bahwa PC dibekukan pengawas.",
+            message: "Keyboard dan mouse peserta berhenti berfungsi sampai Anda cairkan. "
+              + "Layar tetap menampilkan apa yang sedang dibuka, tanpa pesan apa pun.",
             confirmLabel: "Bekukan", danger: true,
           });
           if (ok) await send();
