@@ -1,6 +1,6 @@
 [project]
 name = "labsentinel"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lab Sentinel — transparent lab PC monitoring & control over LAN (institution-owned devices only)."
 readme = "README.md"
 requires-python = ">=3.11"

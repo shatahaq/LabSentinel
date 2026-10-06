@@ -68,8 +68,9 @@ kanan atas mengganti tema terang/gelap.
 
    **Bekukan keyboard & mouse.** Untuk PC yang ketahuan melanggar, buka
    detail PC itu lalu **Bekukan input**: keyboard dan mouse peserta berhenti
-   berfungsi sampai Anda tekan **Cairkan input**. Layar peserta menampilkan
-   pesan bahwa PC dibekukan pengawas (tidak pernah diam-diam), dan PC itu
+   berfungsi sampai Anda tekan **Cairkan input**. Layar peserta tetap
+   menampilkan apa yang sedang dibuka (tanpa pesan atau overlay apa pun), jadi
+   Anda bisa langsung melihat yang dikerjakannya; di dashboard PC itu
    ditandai **❄ Dibekukan** di grid. Pembekuan otomatis lepas bila Anda
    menjeda PC itu atau agent berhenti, jadi peserta tidak akan terkunci
    permanen; peserta juga selalu bisa menekan Ctrl+Alt+Del untuk melepaskannya
