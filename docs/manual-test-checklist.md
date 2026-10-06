@@ -164,7 +164,7 @@ dengan 14 PC simulasi (thumbnail live terkonfirmasi 14/14).
   jelas dan lebih mulus. Tutup → kembali ke thumbnail.
 - [ ] 🖥️🔑 **Bekukan input:** di detail satu PC, **Bekukan input** → keyboard
   dan mouse peserta berhenti, **layar tetap menampilkan apa yang sedang dibuka**
-  (tidak ada overlay/pesan), dan PC ditandai **❄ Dibekukan** di grid.
+  (tidak ada overlay/pesan), dan PC ditandai **Input dibekukan** di grid.
   **Cairkan input** → kembali normal. Periksa pengaman: Ctrl+Alt+Del melepaskan
   pembekuan; menjeda PC itu atau menghentikan service juga melepaskannya
   (peserta tidak terkunci permanen). Belum teruji otomatis — `BlockInput`

@@ -71,7 +71,7 @@ Administrator) lewat [manual-test-checklist.md](manual-test-checklist.md):
   admin untuk perawatan dari perbuatan curang; detailnya hanya menyebut cara
   berhentinya (paksa saat PC menyala / listrik padam / layanan dihentikan
   manual / watchdog). Bila agent dihapus sama sekali, dashboard hanya
-  menampilkan PC itu "Terputus"/"Offline".
+  menampilkan PC itu "Terputus"/"Mati".
 - Waktu di laporan memakai jam PC pengawas; jam PC lab yang tidak sinkron
   memengaruhi kolom "Waktu" pelanggaran.
 

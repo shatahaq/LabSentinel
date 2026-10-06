@@ -177,7 +177,7 @@ Cadangan lewat baris perintah (sebagai Administrator):
    baru** → **Tutup pendaftaran PC baru**.
 2. Jalankan satu sesi praktikum dalam **mode uji coba**; periksa Laporan untuk
    aplikasi yang perlu ditambahkan ke daftar izin.
-3. Matikan mode uji coba (**Aturan → Perilaku**).
+3. Matikan mode uji coba (**Aturan → Penindakan**).
 
 ## 7. Perawatan
 
