@@ -1,0 +1,68 @@
+# Builds the two Windows installers and attaches them to a GitHub Release.
+#
+# Push a version tag to publish:
+#     git tag v0.1.0 && git push origin v0.1.0
+#
+# The release then carries, for download without logging into Actions:
+#     LabSentinelDashboard-Setup-<versi>.exe   (admin / pengawas)
+#     LabSentinelAgent-Setup-<versi>.exe       (peserta / PC lab)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0); created if it does not exist"
+        required: true
+
+permissions:
+  contents: write  # create the release and upload the installers
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dashboard,agent,packaging]"
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build the installers
+        run: python packaging/build.py --installer
+      - name: Smoke-test the built programs
+        shell: pwsh
+        run: |
+          & build\dist\LabSentinelAgent\labsentinel-agent.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "labsentinel-agent.exe --help failed" }
+          & build\dist\LabSentinelDashboard\labsentinel-dashboard.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "labsentinel-dashboard.exe --help failed" }
+          Get-ChildItem build\installer | Format-Table Name, Length
+      - name: Publish the release with both installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $notes = @"
+          Installer Windows Lab Sentinel.
+
+          - **LabSentinelDashboard-Setup-*.exe** — pasang di PC pengawas (admin).
+          - **LabSentinelAgent-Setup-*.exe** — pasang di tiap PC peserta.
+
+          Installer belum ditandatangani, jadi Windows SmartScreen akan
+          memperingatkan saat pertama dijalankan (More info -> Run anyway), dan
+          antivirus mungkin perlu pengecualian folder. Lihat docs/deploy-guide.md.
+          "@
+          if (-not (gh release view "$env:TAG" 2>$null)) {
+            gh release create "$env:TAG" --title "Lab Sentinel $env:TAG" --notes "$notes"
+          }
+          gh release upload "$env:TAG" (Get-ChildItem build\installer\*.exe) --clobber
