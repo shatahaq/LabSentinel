@@ -78,10 +78,10 @@
   function setOffline(off) {
     if (off && !offlineShown) {
       offlineShown = true;
-      toast("Terputus dari aplikasi", "Dashboard tidak merespons. Menghubungkan kembali...", "error");
+      toast("Dashboard tidak merespons", "Mencoba menyambung lagi…", "error");
     } else if (!off && offlineShown) {
       offlineShown = false;
-      toast("Tersambung kembali", "", "ok");
+      toast("Tersambung lagi", "", "ok");
     }
   }
 
@@ -113,7 +113,7 @@
         } else if (v.notify) {
           toast(
             `${v.hostname}: ${v.subject}`,
-            v.dry_run ? "Tercatat (tidak ditindak)" : global.U.violationLabel(v.kind),
+            v.dry_run ? "Dicatat, tidak ditindak" : global.U.violationLabel(v.kind),
             v.dry_run ? "warn" : "error"
           );
         }
@@ -148,25 +148,23 @@
     try { seen = localStorage.getItem("ls-onboarded"); } catch (e) { /* ignore */ }
     if (seen) return;
     openDialog({
-      title: "Selamat datang di Lab Sentinel",
-      subtitle: "Tiga hal yang perlu Anda tahu sebelum mulai.",
+      title: "Sebelum mulai",
       build: (body) => {
         body.innerHTML = `
-          <ol style="padding-left:1.1rem;display:flex;flex-direction:column;gap:var(--s-4);margin:0">
-            <li><strong>PC terhubung sendiri.</strong>
-              Pasang agent di PC peserta dengan kode pemasangan 6 digit (ada di halaman
-              Aturan); agent menemukan dashboard ini lewat jaringan lab. Alamat IP tidak
-              perlu diatur.</li>
-            <li><strong>Mulai dari mode uji coba.</strong>
-              Saat pertama dipasang, pelanggaran hanya dicatat dan tidak ada aplikasi yang
-              ditutup. Coba dulu aturannya, baru tegakkan.</li>
-            <li><strong>Peserta selalu tahu.</strong>
-              Ada ikon di layar peserta yang menunjukkan pemantauan aktif atau dijeda.
-              Tidak ada mode tersembunyi dan ketikan keyboard tidak direkam.</li>
-          </ol>`;
+          <ul class="points">
+            <li><strong>Pasang PC dengan kode 6 digit.</strong>
+              Kodenya ada di Aturan. PC menemukan dashboard ini sendiri di jaringan lab;
+              alamat IP tidak perlu diisi.</li>
+            <li><strong>Awalnya hanya mencatat.</strong>
+              Pada pemasangan baru, aplikasi tidak ditutup dan situs tidak diblokir.
+              Coba aturannya di satu praktikum, lalu tegakkan dari Beranda.</li>
+            <li><strong>Peserta bisa melihatnya.</strong>
+              Ikon Lab Sentinel di layar peserta menunjukkan pemantauan aktif atau dijeda.
+              Ketikan keyboard tidak direkam.</li>
+          </ul>`;
       },
       footer: (foot, close) => {
-        const ok = global.U.el('<button class="btn btn--primary" data-autofocus>Mengerti</button>');
+        const ok = global.U.el('<button class="btn btn--primary" data-autofocus>Mulai</button>');
         ok.addEventListener("click", () => {
           try { localStorage.setItem("ls-onboarded", "1"); } catch (e) { /* ignore */ }
           close();
@@ -189,9 +187,9 @@
     $("#btn-pause-all").addEventListener("click", async (ev) => {
       const total = P.State.agents.length;
       const ok = await confirm({
-        title: "Jeda pemantauan di semua PC?",
-        message: `Pemantauan berhenti di ${total} PC: aplikasi tidak lagi ditutup dan situs tidak lagi diblokir.`,
-        warning: "PC tetap terlihat online, dan Anda bisa melanjutkan kapan saja.",
+        title: "Jeda semua PC?",
+        message: `Di ${total} PC, aplikasi tidak lagi ditutup dan situs tidak lagi diblokir.`,
+        warning: "PC tetap tampil di dashboard dan bisa dilanjutkan kapan saja.",
         confirmLabel: "Jeda semua",
         danger: true,
       });
@@ -204,8 +202,8 @@
 
     $("#btn-resume-all").addEventListener("click", async (ev) => {
       const ok = await confirm({
-        title: "Lanjutkan pemantauan di semua PC?",
-        message: "Aturan kembali ditegakkan di semua PC dalam hitungan detik.",
+        title: "Lanjutkan semua PC?",
+        message: "Aturan berlaku lagi di semua PC dalam beberapa detik.",
         confirmLabel: "Lanjutkan semua",
       });
       if (!ok) return;
@@ -229,7 +227,7 @@
     $("#btn-select-mode").addEventListener("click", (e) => {
       P.State.selecting = !P.State.selecting;
       P.State.selected.clear();
-      e.currentTarget.textContent = P.State.selecting ? "Selesai memilih" : "Pilih beberapa PC";
+      e.currentTarget.textContent = P.State.selecting ? "Selesai memilih" : "Pilih PC";
       P.renderSelectionBar();
       P.renderGrid();
     });
@@ -269,7 +267,7 @@
     initTheme();
     wire();
     if (!API.available) {
-      toast("Mode pratinjau", "Dashboard dibuka tanpa aplikasi Python, data tidak tersedia.", "warn");
+      toast("Pratinjau tanpa data", "Halaman ini dibuka tanpa aplikasi dashboard.", "warn");
       return;
     }
     await refresh();

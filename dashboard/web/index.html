@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lab Sentinel</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f5fd0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l7 3v6c0 4.4-3 8.3-7 9-4-0.7-7-4.6-7-9V6l7-3z'/%3E%3Cpath d='M9.5 12.2l1.8 1.8 3.4-3.6'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='3.5' width='21' height='14' rx='1' fill='%2317191c'/%3E%3Crect x='4' y='6' width='16' height='9' fill='%23f3f3f0'/%3E%3Crect x='15.5' y='7.5' width='3' height='3' fill='%23b42a1d'/%3E%3Crect x='8' y='19' width='8' height='2' fill='%2317191c'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <script type="text/javascript" src="/eel.js"></script>
@@ -14,6 +14,12 @@
 <!-- Icon sprite: real vector icons, no emoji, so they inherit colour and scale. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24">
+      <rect x="1.5" y="3.5" width="21" height="14" rx="1" fill="currentColor"/>
+      <rect x="4" y="6" width="16" height="9" style="fill:var(--band)"/>
+      <rect x="15.5" y="7.5" width="3" height="3" style="fill:var(--danger-on-dark)"/>
+      <rect x="8" y="19" width="8" height="2" fill="currentColor"/>
+    </symbol>
     <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 3l7 3v6c0 4.4-3 8.3-7 9-4-0.7-7-4.6-7-9V6l7-3z"/><path d="M9.5 12.2l1.8 1.8 3.4-3.6"/>
     </symbol>
@@ -84,103 +90,104 @@
 </svg>
 
 <div class="app">
-  <div class="brand">
-    <svg class="brand__mark" aria-hidden="true"><use href="#i-shield"/></svg>
-    <span class="brand__name">Lab Sentinel</span>
-  </div>
+  <header class="band">
+    <div class="brand">
+      <svg class="brand__mark" aria-hidden="true"><use href="#i-mark"/></svg>
+      <span class="brand__name">Lab Sentinel</span>
+    </div>
 
-  <header class="topbar">
-    <div class="topbar__session" id="topbar-session"></div>
-    <div class="topbar__spacer"></div>
-    <div class="topbar__actions">
-      <button class="btn" id="btn-pause-all">
+    <nav class="tabs" aria-label="Navigasi utama">
+      <button class="nav-item" data-page="beranda" aria-current="page">
+        <span class="nav-item__key" aria-hidden="true">1</span><span>Beranda</span>
+      </button>
+      <button class="nav-item" data-page="monitoring">
+        <span class="nav-item__key" aria-hidden="true">2</span><span>Layar PC</span>
+        <span class="nav-item__badge" id="nav-badge" hidden>0</span>
+      </button>
+      <button class="nav-item" data-page="aturan">
+        <span class="nav-item__key" aria-hidden="true">3</span><span>Aturan</span>
+      </button>
+      <button class="nav-item" data-page="laporan">
+        <span class="nav-item__key" aria-hidden="true">4</span><span>Laporan</span>
+      </button>
+      <button class="nav-item" data-page="aktivitas">
+        <span class="nav-item__key" aria-hidden="true">5</span><span>Catatan aktivitas</span>
+      </button>
+    </nav>
+
+    <div class="band__actions">
+      <button class="btn btn--band" id="btn-pause-all">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-pause"/></svg>
         Jeda semua
       </button>
-      <button class="btn btn--primary" id="btn-resume-all">
+      <button class="btn btn--band" id="btn-resume-all">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-play"/></svg>
         Lanjutkan semua
       </button>
-      <button class="btn btn--icon btn--ghost" id="btn-theme" title="Ganti tema terang/gelap"
+      <button class="btn btn--icon btn--band btn--bare" id="btn-theme" title="Tema terang/gelap"
               aria-label="Ganti tema terang atau gelap">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-moon" id="theme-icon"/></svg>
       </button>
     </div>
   </header>
 
-  <nav class="sidebar" aria-label="Navigasi utama">
-    <button class="nav-item" data-page="beranda" aria-current="page">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-home"/></svg><span>Beranda</span>
-    </button>
-    <button class="nav-item" data-page="monitoring">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-grid"/></svg><span>Layar PC</span>
-      <span class="nav-item__badge" id="nav-badge" hidden>0</span>
-    </button>
-    <button class="nav-item" data-page="aturan">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Aturan</span>
-    </button>
-    <button class="nav-item" data-page="laporan">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-report"/></svg><span>Laporan</span>
-    </button>
-    <button class="nav-item" data-page="aktivitas">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-history"/></svg><span>Catatan aktivitas</span>
-    </button>
-  </nav>
+  <div class="sessionline" id="topbar-session" aria-live="polite"></div>
 
   <main class="main" id="main">
     <!-- Beranda -->
     <section class="page is-active" id="page-beranda" aria-labelledby="t-beranda">
       <div class="page__head">
-        <div>
-          <h1 class="page__title" id="t-beranda">Beranda</h1>
-          <p class="page__subtitle">Ringkasan sesi dan pelanggaran terbaru.</p>
-        </div>
+        <h1 class="page__title" id="t-beranda">Beranda</h1>
         <div class="page__actions" id="session-actions"></div>
       </div>
       <div id="dry-run-banner"></div>
-      <div class="stat-row" id="stats"></div>
+
+      <section class="block" aria-labelledby="t-denah">
+        <div class="block__head">
+          <h2 class="block__title" id="t-denah">Denah lab</h2>
+          <div class="tally" id="stats"></div>
+        </div>
+        <div class="labmap" id="lab-map"></div>
+      </section>
+
       <div class="grid-2">
-        <div class="card">
-          <div class="card__head">
-            <span class="card__title">Pelanggaran terbaru</span>
-            <div class="card__actions">
-              <button class="btn btn--sm btn--ghost" data-goto="laporan">Lihat semua</button>
-            </div>
+        <section class="block" aria-labelledby="t-feed">
+          <div class="block__head">
+            <h2 class="block__title" id="t-feed">Pelanggaran terbaru</h2>
+            <button class="btn btn--sm btn--ghost block__more" data-goto="laporan">Buka laporan</button>
           </div>
           <div class="feed" id="recent-feed"></div>
-        </div>
-        <div class="card">
-          <div class="card__head"><span class="card__title">Sesi</span></div>
-          <div class="card__body" id="session-panel"></div>
-        </div>
+        </section>
+        <section class="block" aria-labelledby="t-sesi">
+          <div class="block__head"><h2 class="block__title" id="t-sesi">Sesi</h2></div>
+          <div id="session-panel"></div>
+        </section>
       </div>
     </section>
 
     <!-- Monitoring -->
     <section class="page" id="page-monitoring" aria-labelledby="t-monitoring">
       <div class="page__head">
-        <div>
-          <h1 class="page__title" id="t-monitoring">Layar PC</h1>
-          <p class="page__subtitle" id="monitoring-sub">Klik satu PC untuk melihat layarnya lebih besar.</p>
-        </div>
+        <h1 class="page__title" id="t-monitoring">Layar PC</h1>
+        <span class="page__count" id="monitoring-sub"></span>
         <div class="page__actions">
-          <button class="btn btn--sm" id="btn-select-mode">Pilih beberapa PC</button>
+          <button class="btn btn--sm" id="btn-select-mode">Pilih PC</button>
         </div>
       </div>
 
       <div class="toolbar">
-        <label class="field" style="min-width:220px">
+        <label class="field">
           <svg class="field__icon" aria-hidden="true"><use href="#i-search"/></svg>
-          <input type="search" id="pc-search" placeholder="Cari nama PC..." aria-label="Cari PC">
+          <input type="search" id="pc-search" placeholder="Cari PC atau nama pengguna" aria-label="Cari PC">
         </label>
-        <div class="segmented" role="group" aria-label="Saring berdasarkan status">
+        <div class="segmented" role="group" aria-label="Saring menurut status">
           <button data-filter="all" aria-pressed="true">Semua</button>
           <button data-filter="online" aria-pressed="false">Aktif</button>
           <button data-filter="paused" aria-pressed="false">Dijeda</button>
           <button data-filter="dropped" aria-pressed="false">Terputus</button>
-          <button data-filter="offline" aria-pressed="false">Offline</button>
+          <button data-filter="offline" aria-pressed="false">Mati</button>
         </div>
-        <div class="topbar__spacer"></div>
+        <div class="toolbar__spacer"></div>
         <div id="selection-bar" hidden></div>
       </div>
 
@@ -190,10 +197,7 @@
     <!-- Aturan -->
     <section class="page" id="page-aturan" aria-labelledby="t-aturan">
       <div class="page__head">
-        <div>
-          <h1 class="page__title" id="t-aturan">Aturan</h1>
-          <p class="page__subtitle">Pilih mode, lalu sesuaikan aplikasi dan situs bila perlu.</p>
-        </div>
+        <h1 class="page__title" id="t-aturan">Aturan</h1>
       </div>
       <div id="rules-content"></div>
     </section>
@@ -201,24 +205,19 @@
     <!-- Laporan -->
     <section class="page" id="page-laporan" aria-labelledby="t-laporan">
       <div class="page__head">
-        <div>
-          <h1 class="page__title" id="t-laporan">Laporan</h1>
-          <p class="page__subtitle">Riwayat pelanggaran beserta bukti tangkapan layar.</p>
-        </div>
+        <h1 class="page__title" id="t-laporan">Laporan</h1>
         <div class="page__actions" id="report-actions"></div>
       </div>
-      <div class="card"><div class="table-wrap" id="violations-table"></div></div>
+      <div class="register"><div class="table-wrap" id="violations-table"></div></div>
     </section>
 
     <!-- Aktivitas -->
     <section class="page" id="page-aktivitas" aria-labelledby="t-aktivitas">
       <div class="page__head">
-        <div>
-          <h1 class="page__title" id="t-aktivitas">Catatan aktivitas</h1>
-          <p class="page__subtitle">Semua tindakan pengawas tercatat di sini dan tidak dapat diubah.</p>
-        </div>
+        <h1 class="page__title" id="t-aktivitas">Catatan aktivitas</h1>
+        <span class="page__count">Tidak bisa diubah atau dihapus dari dashboard.</span>
       </div>
-      <div class="card"><div class="table-wrap" id="audit-table"></div></div>
+      <div class="register"><div class="table-wrap" id="audit-table"></div></div>
     </section>
   </main>
 </div>

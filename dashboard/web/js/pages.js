@@ -7,7 +7,7 @@
 (function (global) {
   "use strict";
 
-  const { $, $$, esc, el, icon, statusChip, statusInfo, ago, clock, datetime, fullDate,
+  const { $, $$, esc, el, icon, statusChip, statusInfo, ago, clock, datetime, fullDate, stamp,
           violationLabel, duration } = global.U;
   const { toast, reportToast, openDialog, confirm, empty, withBusy } = global.C;
 
@@ -36,7 +36,8 @@
     State.session = data.session || null;
     State.globalPaused = !!data.global_paused;
 
-    renderStats();
+    renderTally();
+    renderLabMap();
     renderDryRunBanner();
     renderSessionPanel(data.upcoming || []);
     renderSessionActions();
@@ -44,28 +45,18 @@
     renderFeed(data.recent_violations || []);
   }
 
-  function renderStats() {
+  /* The head count beside the lab map; each figure opens the screens with
+     that status filtered. */
+  function renderTally() {
     const c = State.counts || {};
-    const tiles = [
-      { key: "online",  label: "Aktif",    value: c.online || 0,  cls: "stat--ok",
-        hint: "Sedang diawasi" },
-      { key: "paused",  label: "Dijeda",   value: c.paused || 0,  cls: "stat--warn",
-        hint: "Pemantauan dihentikan sementara" },
-      { key: "dropped", label: "Terputus", value: c.dropped || 0, cls: "stat--danger",
-        hint: "Tidak mengirim kabar" },
-      { key: "offline", label: "Offline",  value: c.offline || 0, cls: "",
-        hint: "Belum menyala" },
+    const items = [
+      ["online", "aktif"], ["paused", "dijeda"], ["dropped", "terputus"], ["offline", "mati"],
     ];
-    $("#stats").innerHTML = tiles.map((t) => `
-      <button class="stat ${t.cls}" data-stat="${t.key}" style="cursor:pointer;text-align:left;width:100%">
-        <div class="stat__label">
-          <svg style="width:11px;height:11px" aria-hidden="true">
-            <use href="#${statusInfo(t.key).icon}"/></svg>${esc(t.label)}
-        </div>
-        <div class="stat__value">${t.value}</div>
-        <div class="stat__hint">${esc(t.hint)}</div>
-      </button>`).join("");
-
+    $("#stats").innerHTML = items.map(([key, word]) => {
+      const n = c[key] || 0;
+      return `<button class="tally__item tally__item--${key} ${n ? "" : "is-zero"}" data-stat="${key}"
+                      title="Tampilkan PC yang ${word}"><b>${n}</b>${word}</button>`;
+    }).join("");
     $$("[data-stat]").forEach((node) => {
       node.addEventListener("click", () => {
         State.filter = node.dataset.stat;
@@ -76,41 +67,84 @@
     });
   }
 
+  /* Lab rows from PC names: "LAB-A-01" and "LAB-A-02" sit in row A. Names
+     that follow no pattern share one row. */
+  function labRows(agents) {
+    const rows = new Map();
+    agents.slice()
+      .sort((x, y) => (x.hostname || x.agent_id).localeCompare(y.hostname || y.agent_id, "id",
+                                                              { numeric: true }))
+      .forEach((a) => {
+        const m = /^(.*?)[-_ ]?(\d+)$/.exec(a.hostname || "");
+        const prefix = m ? m[1] : "";
+        const key = prefix.split(/[-_ ]/).filter(Boolean).pop() || "";
+        if (!rows.has(key)) rows.set(key, []);
+        rows.get(key).push(a);
+      });
+    return rows;
+  }
+
+  function renderLabMap() {
+    const host = $("#lab-map");
+    if (!State.agents.length) {
+      host.innerHTML = `<p class="labmap__empty">Belum ada PC terpasang. Kode pemasangan ada di
+        <button class="btn btn--sm" id="map-pairing">Aturan</button></p>`;
+      $("#map-pairing").addEventListener("click", () => {
+        State.focusPairing = true;
+        global.App.goto("aturan");
+      });
+      return;
+    }
+    const rows = labRows(State.agents);
+    const now = Date.now() / 1000;
+    host.innerHTML = Array.from(rows.entries()).map(([key, agents]) => `
+      <div class="labmap__row">
+        <div class="labmap__label">${rows.size > 1 && key ? `Baris ${esc(key)}` : "PC"}</div>
+        <div class="labmap__seats">${agents.map((a) => {
+          const flagged = a.last_violation_at && (now - a.last_violation_at) < RECENT_VIOLATION_S;
+          const s = statusInfo(a.status);
+          return `
+            <button class="seat seat--${esc(a.status)} ${flagged ? "is-flagged" : ""}"
+                    data-seat="${esc(a.agent_id)}"
+                    title="${esc(a.hostname)} · ${esc(s.label)}${a.username ? ` · ${esc(a.username)}` : ""}">
+              <span class="seat__name">${esc(a.hostname || a.agent_id)}</span>
+              <span class="seat__state">${statusChip(a.status)}
+                ${a.violation_count ? `<span class="seat__count">${a.violation_count}×</span>` : ""}</span>
+            </button>`;
+        }).join("")}</div>
+      </div>`).join("");
+    $$("[data-seat]", host).forEach((node) => {
+      node.addEventListener("click", () => openPc(node.dataset.seat));
+    });
+  }
+
   function renderDryRunBanner() {
     const host = $("#dry-run-banner");
     if (State.rules && State.rules.mode === "free") {
       host.innerHTML = `
         <div class="banner banner--info">
-          ${icon("monitor")}
-          <div><strong>Mode Bebas: hanya memantau.</strong>
-            Layar PC tetap terlihat dan aplikasi di luar daftar tetap dicatat, tetapi
-            tidak ada aplikasi yang ditutup atau situs yang diblokir.</div>
+          <div><strong>Mode Bebas.</strong> Layar dan pelanggaran tetap terpantau, tapi tidak ada
+            aplikasi yang ditutup atau situs yang diblokir.</div>
         </div>`;
       return;
     }
     if (!State.rules || !State.rules.dry_run) { host.innerHTML = ""; return; }
     host.innerHTML = `
       <div class="banner">
-        ${icon("alert")}
-        <div>
-          <strong>Mode uji coba aktif.</strong>
-          Pelanggaran dicatat, tetapi aplikasi <em>tidak</em> ditutup dan situs
-          <em>tidak</em> diblokir. Cocok untuk mencoba aturan sebelum ujian.
-          <div style="margin-top:var(--s-2)">
-            <button class="btn btn--sm" id="btn-leave-dryrun">Mulai menegakkan aturan</button>
-          </div>
-        </div>
+        <div><strong>Uji coba.</strong> Pelanggaran hanya dicatat: aplikasi tidak ditutup,
+          situs tidak diblokir.</div>
+        <button class="btn btn--sm" id="btn-leave-dryrun">Tegakkan aturan</button>
       </div>`;
     $("#btn-leave-dryrun").addEventListener("click", async (ev) => {
       const ok = await confirm({
-        title: "Mulai menegakkan aturan?",
-        message: "Mulai sekarang, aplikasi di luar daftar izin akan ditutup dan situs terlarang akan diblokir di semua PC.",
-        confirmLabel: "Ya, tegakkan aturan",
+        title: "Tegakkan aturan sekarang?",
+        message: "Di semua PC, aplikasi di luar daftar izin akan ditutup dan situs terlarang diblokir.",
+        confirmLabel: "Tegakkan",
       });
       if (!ok) return;
       await withBusy(ev.currentTarget, async () => {
         const res = await API.setDryRun(false);
-        if (res.ok) { toast("Aturan ditegakkan", `Dikirim ke ${res.reached} PC.`, "ok"); global.App.refresh(); }
+        if (res.ok) { toast("Aturan ditegakkan", `Terkirim ke ${res.reached} PC.`, "ok"); global.App.refresh(); }
         else toast("Gagal", res.error, "error");
       });
     });
@@ -118,16 +152,20 @@
 
   function renderTopbarSession() {
     const host = $("#topbar-session");
+    host.classList.toggle("sessionline--live", !!State.session && !State.globalPaused);
+    host.classList.toggle("sessionline--paused", !!State.session && State.globalPaused);
+    const lamp = '<span class="sessionline__lamp" aria-hidden="true"></span>';
+    const sep = '<span class="sessionline__sep" aria-hidden="true">/</span>';
     if (State.session) {
       const started = State.session.started_at;
       host.innerHTML = `
-        ${statusChip(State.globalPaused ? "paused" : "online")}
-        <span style="font-weight:var(--weight-medium)">${esc(State.session.name)}</span>
-        <span class="tag">${esc(modeLabel(State.session.mode))}</span>
-        <span style="color:var(--text-tertiary);font-size:var(--text-sm)">
-          berjalan ${esc(duration(Date.now() / 1000 - (started || 0)))}</span>`;
+        ${lamp}<span>${State.globalPaused ? "Sesi dijeda" : "Sesi berjalan"}</span>
+        <strong class="truncate">${esc(State.session.name)}</strong>
+        ${sep}<span>${esc(modeLabel(State.session.mode))}</span>
+        ${sep}<span class="num">mulai ${esc(clock(started))} (${esc(duration(Date.now() / 1000 - (started || 0)))})</span>`;
     } else {
-      host.innerHTML = `<span style="color:var(--text-tertiary)">Belum ada sesi berjalan</span>`;
+      const mode = State.rules ? `${sep}<span>Mode ${esc(modeLabel(State.rules.mode))}</span>` : "";
+      host.innerHTML = `${lamp}<span>Tidak ada sesi</span>${mode}`;
     }
   }
 
@@ -145,8 +183,8 @@
     const end = $("#btn-end-session");
     if (end) end.addEventListener("click", async (ev) => {
       const ok = await confirm({
-        title: "Akhiri sesi sekarang?",
-        message: `Sesi "${State.session.name}" akan ditutup dan pemantauan dijeda di semua PC.`,
+        title: "Akhiri sesi?",
+        message: `"${State.session.name}" ditutup dan pemantauan dijeda di semua PC.`,
         confirmLabel: "Akhiri sesi",
         danger: true,
       });
@@ -159,31 +197,44 @@
     });
   }
 
+  /* What each mode allows; the Aturan page reads the same words from
+     domain/session_presets.py, so keep the two in step. */
+  const MODE_SPEC = {
+    exam: { apps: "Hanya Chrome dan Edge", sites: "Semua kategori dan situs tambahan diblokir" },
+    lab: { apps: "Browser dan aplikasi yang diizinkan", sites: "Kategori pilihan dan situs tambahan diblokir" },
+    free: { apps: "Tidak ada yang ditutup", sites: "Tidak ada yang diblokir" },
+  };
+
+  function modeOption(key, label, spec, pressed, current) {
+    return `
+      <button class="mode" data-mode="${esc(key)}" aria-pressed="${pressed}">
+        <span class="mode__top"><span class="mode__radio" aria-hidden="true"></span>
+          <span class="mode__name">${esc(label)}</span>
+          ${current ? '<span class="mode__now">dipakai</span>' : ""}</span>
+        <dl class="mode__spec">
+          <dt>Aplikasi</dt><dd>${esc(spec.apps)}</dd>
+          <dt>Situs</dt><dd>${esc(spec.sites)}</dd>
+        </dl>
+      </button>`;
+  }
+
   function openStartSessionDialog() {
     openDialog({
-      title: "Mulai sesi baru",
-      subtitle: "Sesi mengelompokkan pelanggaran agar laporannya rapi.",
+      title: "Mulai sesi",
+      subtitle: "Pelanggaran selama sesi masuk ke laporan sesi ini.",
       build: (body) => {
+        const current = (State.rules && State.rules.mode) || "lab";
         body.innerHTML = `
           <label style="display:block;margin-bottom:var(--s-4)">
-            <div style="font-weight:var(--weight-medium);margin-bottom:var(--s-1)">Nama sesi</div>
+            <span class="label">Nama sesi</span>
             <input class="input" id="sess-name" data-autofocus
-                   placeholder="Contoh: Ujian Algoritma - Kelas A">
+                   placeholder="UTS Algoritma, Kelas A">
           </label>
-          <div style="font-weight:var(--weight-medium);margin-bottom:var(--s-2)">Mode</div>
-          <div class="mode-row" id="sess-modes"></div>`;
-        const modes = ["exam", "lab", "free"];
-        const descs = {
-          exam: ["Ujian", "Paling ketat", "Hanya browser. Semua kategori situs dan situs tambahan diblokir."],
-          lab: ["Praktikum", "Sedang", "Browser + aplikasi mata kuliah. Situs pilihan diblokir."],
-          free: ["Bebas", "Hanya memantau", "Tidak ada yang ditutup atau diblokir; tetap dicatat."],
-        };
-        $("#sess-modes", body).innerHTML = modes.map((m, i) => `
-          <button class="mode" data-mode="${m}" aria-pressed="${i === 0}">
-            <div class="mode__summary">${esc(descs[m][1])}</div>
-            <div class="mode__name">${esc(descs[m][0])}</div>
-            <div class="mode__desc">${esc(descs[m][2])}</div>
-          </button>`).join("");
+          <span class="label" style="margin-bottom:var(--s-2)">Mode</span>
+          <div class="mode-row" id="sess-modes">
+            ${["exam", "lab", "free"].map((m) =>
+              modeOption(m, modeLabel(m), MODE_SPEC[m], m === current, false)).join("")}
+          </div>`;
         $$("[data-mode]", body).forEach((btn) => {
           btn.addEventListener("click", () => {
             $$("[data-mode]", body).forEach((b) => b.setAttribute("aria-pressed", "false"));
@@ -197,12 +248,12 @@
         cancel.addEventListener("click", close);
         go.addEventListener("click", async () => {
           const name = $("#sess-name").value.trim();
-          if (!name) { toast("Nama sesi wajib diisi", "Beri nama agar laporan mudah dicari.", "warn"); return; }
-          const mode = ($('[data-mode][aria-pressed="true"]') || {}).dataset.mode || "lab";
+          if (!name) { toast("Nama sesi belum diisi", "Nama ini dipakai sebagai judul laporan.", "warn"); return; }
+          const mode = ($('#sess-modes [aria-pressed="true"]') || {}).dataset.mode || "lab";
           await withBusy(go, async () => {
             const res = await API.startSession(name, mode);
-            if (res.ok) { close(); toast("Sesi dimulai", `${name} — mode ${modeLabel(mode)}.`, "ok"); global.App.refresh(); }
-            else toast("Gagal memulai sesi", res.error, "error");
+            if (res.ok) { close(); toast("Sesi dimulai", `${name}, mode ${modeLabel(mode)}.`, "ok"); global.App.refresh(); }
+            else toast("Sesi gagal dimulai", res.error, "error");
           });
         });
         foot.append(cancel, go);
@@ -212,41 +263,37 @@
 
   function renderSessionPanel(upcoming) {
     const host = $("#session-panel");
-    if (!State.session && !upcoming.length) {
-      host.innerHTML = "";
-      host.appendChild(empty({
-        iconName: "clock",
-        title: "Belum ada sesi",
-        text: "Mulai sesi saat praktikum atau ujian dimulai, agar pelanggaran tercatat per sesi dan mudah dilaporkan.",
-        actionLabel: "Mulai sesi",
-        onAction: openStartSessionDialog,
-      }));
-      return;
-    }
     const parts = [];
     if (State.session) {
+      const s = State.session;
       parts.push(`
-        <div style="display:flex;align-items:center;gap:var(--s-2);margin-bottom:var(--s-3)">
-          ${statusChip("online")}
-          <div>
-            <div style="font-weight:var(--weight-medium)">${esc(State.session.name)}</div>
-            <div style="font-size:var(--text-sm);color:var(--text-secondary)">
-              Mode ${esc(modeLabel(State.session.mode))} · mulai ${esc(clock(State.session.started_at))}
-            </div>
-          </div>
+        <div class="session">
+          <div class="session__name">${esc(s.name)}</div>
+          <dl class="session__facts">
+            <dt>Mode</dt><dd>${esc(modeLabel(s.mode))}</dd>
+            <dt>Mulai</dt><dd class="num">${esc(clock(s.started_at))}</dd>
+            <dt>Berjalan</dt><dd>${esc(duration(Date.now() / 1000 - (s.started_at || 0)))}</dd>
+            <dt>Pemantauan</dt><dd>${State.globalPaused ? "Dijeda" : "Aktif"}</dd>
+          </dl>
+        </div>`);
+    } else {
+      parts.push(`
+        <div class="empty">
+          <div class="empty__title">Tidak ada sesi berjalan.</div>
+          <p class="empty__text">Pelanggaran tetap dicatat, tapi tidak masuk ke laporan sesi mana pun.
+            Mulai sesi saat praktikum atau ujian dimulai.</p>
         </div>`);
     }
     if (upcoming.length) {
-      parts.push(`<div class="nav-section" style="margin-left:0">Terjadwal</div>`);
-      parts.push(upcoming.map((s) => `
-        <div style="display:flex;gap:var(--s-2);align-items:center;padding:6px 0;border-top:1px solid var(--border)">
-          ${icon("clock", "")}
-          <div style="min-width:0">
-            <div class="truncate" style="font-weight:var(--weight-medium)">${esc(s.name)}</div>
-            <div style="font-size:var(--text-sm);color:var(--text-secondary)">
-              ${esc(fullDate(s.scheduled_start))}</div>
-          </div>
-        </div>`).join(""));
+      parts.push(`
+        <div class="session__sched">
+          <div class="subhead" style="margin-top:0">Terjadwal</div>
+          ${upcoming.map((s) => `
+            <div class="session__sched-item">
+              <span class="truncate">${esc(s.name)}</span>
+              <span class="muted">${esc(fullDate(s.scheduled_start))}</span>
+            </div>`).join("")}
+        </div>`);
     }
     host.innerHTML = parts.join("");
   }
@@ -256,9 +303,8 @@
     host.innerHTML = "";
     if (!violations.length) {
       host.appendChild(empty({
-        iconName: "check",
-        title: "Belum ada pelanggaran",
-        text: "Pelanggaran akan muncul di sini begitu terjadi, lengkap dengan bukti tangkapan layar.",
+        title: "Belum ada pelanggaran.",
+        text: "Setiap pelanggaran muncul di sini dengan tangkapan layarnya.",
       }));
       return;
     }
@@ -266,22 +312,18 @@
   }
 
   function feedItem(v) {
-    const muted = v.dry_run;
     const node = el(`
-      <div class="feed__item" role="button" tabindex="0">
-        <div class="feed__icon ${muted ? "feed__icon--muted" : ""}">
-          ${icon({ site_title: "globe", agent_tamper: "alert" }[v.kind] || "app")}
-        </div>
-        <div class="feed__body">
-          <div class="feed__title truncate">${esc(v.subject)}</div>
-          <div class="feed__sub">
-            <span>${esc(v.hostname || v.agent_id)}</span>
-            <span class="tag">${esc(violationLabel(v.kind))}</span>
-            ${v.detected_from_title ? '<span class="tag tag--warn">dari judul jendela</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}
-          </div>
-        </div>
-        <div class="feed__time">${esc(ago(v.occurred_at))}</div>
+      <div class="feed__item ${v.dry_run ? "is-dry" : ""}" role="button" tabindex="0"
+           title="${esc(fullDate(v.occurred_at))}">
+        <span class="feed__time">${esc(stamp(v.occurred_at))}</span>
+        <span class="feed__pc">${esc(v.hostname || v.agent_id)}</span>
+        <span class="feed__body">
+          <span class="feed__title">${esc(v.subject)}</span>
+          <span class="feed__sub">
+            <span class="tag tag--plain">${esc(violationLabel(v.kind))}</span>
+            ${v.dry_run ? '<span class="tag tag--muted">dicatat saja</span>' : ""}
+          </span>
+        </span>
       </div>`);
     const open = () => openViolation(v);
     node.addEventListener("click", open);
@@ -297,20 +339,17 @@
       subtitle: `${v.hostname || v.agent_id} · ${fullDate(v.occurred_at)}`,
       wide: true,
       build: (body) => {
+        const notes = [violationLabel(v.kind)];
+        if (v.detected_from_title) notes.push("terbaca dari judul jendela browser, jadi bisa keliru");
+        if (v.dry_run) notes.push("hanya dicatat, tidak ditindak");
         body.innerHTML = `
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s-4)">
-            <span class="tag">${esc(violationLabel(v.kind))}</span>
-            ${v.detected_from_title
-              ? '<span class="tag tag--warn">terdeteksi dari judul jendela (akurasi terbatas)</span>' : ""}
-            ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat — tidak ditindak</span>' : ""}
-          </div>
-          ${v.detail ? `<p style="color:var(--text-secondary);margin-bottom:var(--s-4)">${esc(v.detail)}</p>` : ""}
+          <p style="margin-bottom:var(--s-3)">${esc(notes.join("; "))}.</p>
+          ${v.detail ? `<p class="muted" style="margin-bottom:var(--s-4)">${esc(v.detail)}</p>` : ""}
           <div id="shot-host"></div>`;
         const shotHost = $("#shot-host", body);
         if (!v.has_screenshot) {
           shotHost.appendChild(empty({
-            iconName: "eye-off", title: "Tanpa bukti layar",
-            text: "Tangkapan layar tidak tersedia untuk pelanggaran ini.",
+            title: "Tidak ada tangkapan layar untuk pelanggaran ini.",
           }));
           return;
         }
@@ -318,13 +357,13 @@
         API.getScreenshot(v.id).then((res) => {
           if (res.ok && res.image) {
             shotHost.innerHTML =
-              `<img src="data:image/jpeg;base64,${res.image}" alt="Bukti tangkapan layar"
-                    style="width:100%;border-radius:var(--radius);border:1px solid var(--border)">`;
+              `<div class="detail__screen"><img src="data:image/jpeg;base64,${res.image}"
+                    alt="Tangkapan layar ${esc(v.hostname || "")} saat pelanggaran"></div>`;
           } else {
             shotHost.innerHTML = "";
             shotHost.appendChild(empty({
-              iconName: "eye-off", title: "Bukti tidak dapat dibuka",
-              text: res.error || "Berkas mungkin sudah dihapus oleh kebijakan retensi.",
+              title: "Tangkapan layar tidak bisa dibuka.",
+              text: res.error || "Berkasnya mungkin sudah terhapus karena melewati masa simpan.",
             }));
           }
         });
@@ -365,9 +404,8 @@
     }
     if (!State.agents.length) {
       host.appendChild(empty({
-        iconName: "monitor",
-        title: "Belum ada PC yang terhubung",
-        text: "Pasang agent di PC peserta dengan kode pemasangan 6 digit. Agent menemukan dashboard ini sendiri lewat jaringan lab — alamat IP tidak perlu diatur.",
+        title: "Belum ada PC terpasang.",
+        text: "Pasang agent di PC peserta, lalu masukkan kode pemasangan 6 digit. PC menemukan dashboard ini sendiri di jaringan lab; alamat IP tidak perlu diisi.",
         actionLabel: "Lihat kode pemasangan",
         onAction: () => { State.focusPairing = true; global.App.goto("aturan"); },
       }));
@@ -375,10 +413,8 @@
     }
     if (!list.length) {
       host.appendChild(empty({
-        iconName: "search",
-        title: "Tidak ada PC yang cocok",
-        text: "Coba ubah kata pencarian atau pilih saringan status yang lain.",
-        actionLabel: "Tampilkan semua",
+        title: "Tidak ada PC yang cocok.",
+        actionLabel: "Tampilkan semua PC",
         onAction: () => { State.filter = "all"; State.search = ""; $("#pc-search").value = ""; syncFilterButtons(); renderGrid(); },
       }));
       return;
@@ -401,8 +437,9 @@
     [...shownSeq.keys()].forEach((id) => { if (!shown.has(id)) shownSeq.delete(id); });
     watchCards(cards);
     if (syncOpenDetail) syncOpenDetail();
-    $("#monitoring-sub").textContent =
-      `${list.length} dari ${State.agents.length} PC ditampilkan. Klik satu PC untuk melihat layarnya lebih besar.`;
+    $("#monitoring-sub").textContent = list.length === State.agents.length
+      ? `${list.length} PC`
+      : `${list.length} dari ${State.agents.length} PC`;
   }
 
   /* A disconnected PC has no screen to show (the dashboard drops its last
@@ -433,13 +470,13 @@
         <div class="pc__screen" data-screen>
           <div class="pc__placeholder">
             ${icon(a.status === "online" ? "monitor" : "eye-off")}
-            <span>${esc(a.status === "online" ? "Memuat layar..." : statusInfo(a.status).label)}</span>
+            <span>${esc(a.status === "online" ? "Memuat layar…" : statusInfo(a.status).label)}</span>
           </div>
           ${a.desktop_access === false
             ? '<div class="pc__overlay"><span class="pc__tag">layar tidak terjangkau</span></div>'
             : a.indicator_visible === false
               ? '<div class="pc__overlay"><span class="pc__tag">indikator disembunyikan</span></div>' : ""}
-          ${a.input_frozen ? '<span class="pc__frozen">❄ Dibekukan</span>' : ""}
+          ${a.input_frozen ? '<span class="pc__frozen">Input dibekukan</span>' : ""}
         </div>
         <div class="pc__meta">
           <div style="min-width:0">
@@ -449,7 +486,7 @@
           <div class="pc__right">
             ${a.violation_count > 0
               ? `<span class="pc__count ${recent ? "" : "pc__count--past"}"
-                       title="${a.violation_count} pelanggaran${recent ? ", terbaru barusan" : ""}">
+                       title="${a.violation_count} pelanggaran${recent ? ", terakhir barusan" : ""}">
                    ${icon("alert", "")}${a.violation_count}</span>`
               : ""}
             ${statusChip(a.status)}
@@ -561,8 +598,8 @@
     const n = State.selected.size;
     host.innerHTML = `
       <div style="display:flex;align-items:center;gap:var(--s-2)">
-        <span style="font-size:var(--text-sm);color:var(--text-secondary)">
-          ${n} PC dipilih</span>
+        <span class="num" style="font-size:var(--text-sm);color:var(--text-secondary)">
+          ${n} dipilih</span>
         <button class="btn btn--sm" id="sel-pause" ${n ? "" : "disabled"}>Jeda</button>
         <button class="btn btn--sm" id="sel-resume" ${n ? "" : "disabled"}>Lanjutkan</button>
         <button class="btn btn--sm" id="sel-lock" ${n ? "" : "disabled"}>Kunci layar</button>
@@ -576,7 +613,7 @@
     $("#sel-msg").addEventListener("click", () => openBroadcastDialog(ids()));
     $("#sel-cancel").addEventListener("click", () => {
       State.selecting = false; State.selected.clear();
-      $("#btn-select-mode").textContent = "Pilih beberapa PC";
+      $("#btn-select-mode").textContent = "Pilih PC";
       renderSelectionBar(); renderGrid();
     });
   }
@@ -584,7 +621,7 @@
   async function massAction(button, verb, run, count, danger) {
     const ok = await confirm({
       title: `${verb} di ${count} PC?`,
-      message: `Tindakan ini dikirim ke ${count} PC sekaligus.`,
+      message: `Perintah dikirim ke ${count} PC sekaligus.`,
       confirmLabel: verb,
       danger: !!danger,
     });
@@ -597,14 +634,14 @@
 
   function openBroadcastDialog(ids) {
     openDialog({
-      title: "Kirim pesan ke peserta",
-      subtitle: ids && ids.length ? `${ids.length} PC terpilih` : "Semua PC",
+      title: "Kirim pesan",
+      subtitle: ids && ids.length ? `Ke ${ids.length} PC yang dipilih` : "Ke semua PC",
       build: (body) => {
         body.innerHTML = `
           <textarea class="input" id="bc-text" data-autofocus maxlength="500"
-                    placeholder="Contoh: Ujian dimulai 5 menit lagi. Tutup semua catatan."></textarea>
-          <p style="margin-top:var(--s-2);font-size:var(--text-sm);color:var(--text-secondary)">
-            Pesan muncul sebagai pemberitahuan kecil di layar peserta dan tidak merebut fokus.</p>`;
+                    placeholder="Waktu tinggal 10 menit. Simpan pekerjaan Anda."></textarea>
+          <p class="hint">Muncul sebagai notifikasi kecil di layar peserta; jendela yang sedang
+            dipakai tidak berpindah.</p>`;
       },
       footer: (foot, close) => {
         const cancel = el('<button class="btn">Batal</button>');
@@ -612,7 +649,7 @@
         cancel.addEventListener("click", close);
         send.addEventListener("click", async () => {
           const text = $("#bc-text").value.trim();
-          if (!text) { toast("Pesan kosong", "Tulis pesan terlebih dahulu.", "warn"); return; }
+          if (!text) { toast("Pesan masih kosong", "", "warn"); return; }
           await withBusy(send, async () => {
             reportToast(await API.broadcast(text, ids && ids.length ? ids : null), "Kirim pesan");
             close();
@@ -648,12 +685,12 @@
 
     const dialog = openDialog({
       title: agent.hostname || agentId,
-      subtitle: `${agent.username || "—"} · ${agent.remote_addr || ""}`,
+      subtitle: [agent.username, agent.remote_addr].filter(Boolean).join(" · ") || " ",
       wide: true,
       build: (body) => {
         body.innerHTML = `
           <div class="detail__screen" id="detail-screen">
-            <div class="pc__placeholder">${icon("monitor")}<span>Memuat layar...</span></div>
+            <div class="pc__placeholder">${icon("monitor")}<span>Memuat layar…</span></div>
           </div>
           <div class="detail__facts" id="detail-facts"></div>`;
         paintDetail(agent);
@@ -677,7 +714,7 @@
         }, 150);
       },
       footer: (foot, close) => {
-        const pause = el('<button class="btn">Jeda PC ini</button>');
+        const pause = el('<button class="btn">Jeda</button>');
         const resume = el('<button class="btn">Lanjutkan</button>');
         const lock = el('<button class="btn">Kunci layar</button>');
         const freeze = el('<button class="btn"></button>');
@@ -687,10 +724,10 @@
           freeze.classList.toggle("btn--warn", frozen);
           // No desktop worker means no way to freeze this PC right now.
           freeze.disabled = agent.desktop_access === false;
-          freeze.title = freeze.disabled ? "Layar PC ini sedang tidak terjangkau" : "";
+          freeze.title = freeze.disabled ? "Layar PC ini sedang tidak terjangkau" : "Keyboard dan mouse peserta";
         };
         paintFreeze();
-        const done = el('<button class="btn btn--primary">Tutup</button>');
+        const done = el('<button class="btn">Tutup</button>');
         pause.addEventListener("click", (e) => withBusy(e.currentTarget, async () => {
           reportToast(await API.pause([agentId]), "Jeda"); global.App.refresh();
         }));
@@ -700,7 +737,7 @@
         lock.addEventListener("click", async () => {
           const ok = await confirmHere({
             title: "Kunci layar PC ini?",
-            message: "Peserta harus memasukkan kata sandi Windows untuk masuk kembali.",
+            message: "Peserta harus mengetik kata sandi Windows untuk masuk lagi.",
             confirmLabel: "Kunci layar", danger: true,
           });
           if (ok) reportToast(await API.lockScreens([agentId]), "Kunci layar");
@@ -718,15 +755,17 @@
             return;
           }
           const ok = await confirmHere({
-            title: "Bekukan keyboard & mouse PC ini?",
-            message: "Keyboard dan mouse peserta berhenti berfungsi sampai Anda cairkan. "
-              + "Layar tetap menampilkan apa yang sedang dibuka, tanpa pesan apa pun.",
+            title: "Bekukan keyboard dan mouse?",
+            message: "Keyboard dan mouse peserta mati sampai Anda cairkan. Layarnya tetap "
+              + "seperti sekarang, tanpa pesan apa pun, jadi yang sedang dibuka bisa Anda lihat.",
             confirmLabel: "Bekukan", danger: true,
           });
           if (ok) await send();
         });
         done.addEventListener("click", close);
-        foot.append(pause, resume, lock, freeze, done);
+        const actions = el('<div class="dialog__foot-start"></div>');
+        actions.append(pause, resume, lock, freeze);
+        foot.append(actions, done);
       },
     });
 
@@ -763,25 +802,25 @@
   }
 
   function paintDetail(agent) {
+    const unreachable = agent.desktop_access === false;
     const facts = [
       ["Status", statusInfo(agent.status).label],
-      ["Pelanggaran", String(agent.violation_count || 0)],
-      ["Jendela aktif", agent.active_window_title || "—"],
-      ["Aturan versi", String(agent.rule_revision)],
-      ["CPU agent", `${(agent.cpu_percent || 0).toFixed(1)}%`],
-      ["RAM agent", `${Math.round(agent.mem_mb || 0)} MB`],
+      ["Pelanggaran", String(agent.violation_count || 0), agent.violation_count > 0],
+      ["Jendela aktif", agent.active_window_title || "—", false, true],
+      ["Keyboard & mouse", agent.input_frozen ? "Dibekukan" : "Normal", !!agent.input_frozen],
+      ["Akses layar", unreachable ? "Tidak terjangkau" : "Normal", unreachable,
+        false, unreachable ? "Tangkapan layar, judul jendela, dan penutupan aplikasi tidak berjalan" : ""],
+      ["Ikon di layar peserta", agent.indicator_visible === false ? "Disembunyikan" : "Terlihat",
+        agent.indicator_visible === false],
       ["Kabar terakhir", ago(agent.last_heartbeat)],
-      ["Indikator peserta", agent.indicator_visible === false ? "Tidak terlihat" : "Terlihat"],
-      ["Akses layar", agent.desktop_access === false
-        ? "Tidak terjangkau — layar, judul jendela, dan penutupan aplikasi tidak berjalan"
-        : "Normal"],
-      ["Input peserta", agent.input_frozen ? "Dibekukan pengawas" : "Normal"],
+      ["Versi aturan", String(agent.rule_revision)],
+      ["CPU / RAM agent", `${(agent.cpu_percent || 0).toFixed(1)}% · ${Math.round(agent.mem_mb || 0)} MB`],
     ];
     const host = $("#detail-facts");
     if (host) {
-      host.innerHTML = facts.map(([k, v]) => `
-        <div><div class="fact__label">${esc(k)}</div>
-        <div class="fact__value truncate">${esc(v)}</div></div>`).join("");
+      host.innerHTML = facts.map(([k, v, alert, wide, hint]) => `
+        <div class="fact ${wide ? "fact--wide" : ""}"><div class="fact__label">${esc(k)}</div>
+        <div class="fact__value truncate ${alert ? "is-alert" : ""}" title="${esc(hint || v)}">${esc(v)}</div></div>`).join("");
     }
   }
 
@@ -794,105 +833,96 @@
     const res = await API.getRules();
     if (!res.ok) {
       host.innerHTML = "";
-      host.appendChild(empty({ iconName: "alert", title: "Gagal memuat aturan", text: res.error }));
+      host.appendChild(empty({ title: "Aturan tidak bisa dimuat.", text: res.error }));
       return;
     }
     const rules = res.rules;
     State.rules = rules;
 
     host.innerHTML = `
-      <div class="card" style="margin-bottom:var(--s-4)">
-        <div class="card__head"><span class="card__title">Mode</span>
-          <div class="card__actions"><span class="tag">versi ${rules.revision}</span></div>
-        </div>
-        <div class="card__body"><div class="mode-row" id="mode-row"></div></div>
-      </div>
+      <section class="block" aria-labelledby="t-mode">
+        <div class="block__head"><h2 class="block__title" id="t-mode">Mode</h2>
+          <span class="block__aside num">Versi aturan ${esc(rules.revision)}</span></div>
+        <div class="block__body"><div class="mode-row" id="mode-row"></div></div>
+      </section>
 
-      <div class="grid-2">
-        <div class="card">
-          <div class="card__head"><span class="card__title">Aplikasi yang diizinkan</span></div>
-          <div class="card__body">
+      <div class="rules-cols">
+        <section class="block" aria-labelledby="t-apps">
+          <div class="block__head"><h2 class="block__title" id="t-apps">Aplikasi yang diizinkan</h2></div>
+          <div class="block__body">
             ${appsNote(rules)}
             <div class="chip-input" id="wl-chips"></div>
-            <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
-              <input class="input" id="wl-new" placeholder="contoh: code.exe" style="flex:1"
-                     aria-label="Nama berkas aplikasi">
+            <div class="add-row">
+              <input class="input" id="wl-new" placeholder="code.exe" aria-label="Nama berkas aplikasi">
               <button class="btn" id="wl-add">Tambah</button>
             </div>
+            <p class="hint">Nama berkasnya ada di Task Manager, tab Details.</p>
           </div>
-        </div>
+        </section>
 
-        <div class="card">
-          <div class="card__head"><span class="card__title">Situs yang diblokir</span>
-            <div class="card__actions"><span class="tag" id="site-count">${rules.site_count} situs</span></div>
-          </div>
-          <div class="card__body">
+        <section class="block" aria-labelledby="t-sites">
+          <div class="block__head"><h2 class="block__title" id="t-sites">Situs yang diblokir</h2>
+            <span class="block__aside num" id="site-count">${siteCountLabel(rules)}</span></div>
+          <div class="block__body">
             ${sitesNote(rules)}
             <div class="check-list" id="cat-list"></div>
-            <div style="font-weight:var(--weight-medium);margin:var(--s-4) 0 var(--s-1)">Situs tambahan</div>
-            <p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
-              Diblokir di mode Praktikum dan Ujian. Tempel alamatnya; seluruh situs ikut
-              diblokir, termasuk subdomainnya.</p>
+            <div class="subhead">Situs tambahan</div>
+            <p class="block__note" style="margin-bottom:var(--s-2)">Tempel alamatnya. Subdomain ikut
+              diblokir; berlaku di Praktikum dan Ujian.</p>
             <div class="chip-input" id="site-chips"></div>
-            <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
-              <input class="input" id="site-new" placeholder="contoh: tiktok.com" style="flex:1"
-                     aria-label="Alamat situs">
+            <div class="add-row">
+              <input class="input" id="site-new" placeholder="tiktok.com" aria-label="Alamat situs">
               <button class="btn" id="site-add">Tambah</button>
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
-      <div class="card" style="margin-top:var(--s-4)">
-        <div class="card__head"><span class="card__title">Perilaku</span></div>
-        <div class="card__body">
-          <label class="switch" style="margin-bottom:var(--s-4)">
+      <section class="block" aria-labelledby="t-behaviour">
+        <div class="block__head"><h2 class="block__title" id="t-behaviour">Penindakan</h2></div>
+        <div class="block__body">
+          <label class="switch setting">
             <input type="checkbox" id="opt-dryrun" ${rules.dry_run ? "checked" : ""}>
             <span>
-              <div style="font-weight:var(--weight-medium)">Mode uji coba (hanya mencatat)</div>
-              <div style="font-size:var(--text-sm);color:var(--text-secondary)">
-                Pelanggaran dicatat, tapi aplikasi tidak ditutup dan situs tidak diblokir.
-                ${rules.mode === "free" ? "Di mode Bebas tidak ada yang ditindak, apa pun pilihan ini." : ""}</div>
+              <span class="label" style="margin:0">Uji coba: hanya catat, jangan tindak</span>
+              <span class="hint" style="display:block;margin:0">Aplikasi tidak ditutup dan situs tidak
+                diblokir; pelanggaran tetap masuk laporan.
+                ${rules.mode === "free" ? "Mode Bebas memang tidak menindak apa pun." : ""}</span>
             </span>
           </label>
-          <label style="display:block;max-width:320px">
-            <div style="font-weight:var(--weight-medium);margin-bottom:var(--s-1)">
-              Jeda peringatan sebelum menutup aplikasi</div>
-            <div style="display:flex;gap:var(--s-2);align-items:center">
-              <input class="input" type="number" id="opt-grace" min="0" max="60"
-                     value="${rules.close_grace_seconds}" style="width:90px">
-              <span style="color:var(--text-secondary)">detik</span>
+          <div class="setting">
+            <label class="label" for="opt-grace">Waktu peringatan sebelum aplikasi ditutup</label>
+            <div class="inline-row">
+              <input class="input num" type="number" id="opt-grace" min="0" max="60"
+                     value="${rules.close_grace_seconds}" style="width:84px">
+              <span class="muted">detik</span>
               <button class="btn btn--sm" id="opt-grace-save">Simpan</button>
             </div>
-            <div style="font-size:var(--text-sm);color:var(--text-secondary);margin-top:4px">
-              Peserta diberi waktu menyimpan pekerjaan sebelum aplikasi ditutup.</div>
-          </label>
+            <p class="hint">Peserta sempat menyimpan pekerjaannya dulu.</p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="card" id="pairing-card" style="margin-top:var(--s-4)"></div>`;
+      <section class="block" id="pairing-card" aria-labelledby="t-pairing"></section>`;
     renderPairing();
 
     // modes
-    $("#mode-row").innerHTML = res.modes.map((m) => `
-      <button class="mode" data-mode="${esc(m.key)}" aria-pressed="${rules.mode === m.key}">
-        <div class="mode__summary">${esc(m.summary)}</div>
-        <div class="mode__name">${esc(m.label)}</div>
-        <div class="mode__desc">${esc(m.description)}</div>
-      </button>`).join("");
+    $("#mode-row").innerHTML = res.modes.map((m) =>
+      modeOption(m.key, m.label, { apps: m.apps, sites: m.sites },
+                 rules.mode === m.key, rules.mode === m.key)).join("");
     $$("#mode-row [data-mode]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         if (btn.getAttribute("aria-pressed") === "true") return;
         const label = btn.querySelector(".mode__name").textContent;
         const ok = await confirm({
-          title: `Ganti mode ke ${label}?`,
-          message: "Aturan baru langsung dikirim ke semua PC yang terhubung.",
-          confirmLabel: "Ganti mode",
+          title: `Pakai mode ${label}?`,
+          message: "Aturan baru langsung terkirim ke semua PC yang terhubung.",
+          confirmLabel: `Pakai ${label}`,
         });
         if (!ok) return;
         await withBusy(btn, async () => {
           const r = await API.setMode(btn.dataset.mode);
-          if (r.ok) { toast("Mode diganti", `Dikirim ke ${r.reached} PC.`, "ok"); renderRules(); global.App.refresh(); }
+          if (r.ok) { toast(`Mode ${label} dipakai`, `Terkirim ke ${r.reached} PC.`, "ok"); renderRules(); global.App.refresh(); }
           else toast("Gagal", r.error, "error");
         });
       });
@@ -910,7 +940,7 @@
       $$("#wl-chips [data-remove]").forEach((b) => b.addEventListener("click", async () => {
         const next = rules.app_whitelist.filter((x) => x !== b.dataset.remove);
         const r = await API.setWhitelist(next);
-        if (r.ok) { rules.app_whitelist = r.rules.app_whitelist; paintChips(); toast("Aplikasi dihapus", "", "ok"); }
+        if (r.ok) { rules.app_whitelist = r.rules.app_whitelist; paintChips(); toast("Aplikasi dihapus", b.dataset.remove, "ok"); }
         else toast("Gagal", r.error, "error");
       }));
     }
@@ -918,7 +948,7 @@
     const addApp = async () => {
       const name = $("#wl-new").value.trim().toLowerCase();
       if (!name) return;
-      if (!name.endsWith(".exe")) { toast("Nama tidak valid", "Tulis nama berkas lengkap, contoh: code.exe", "warn"); return; }
+      if (!name.endsWith(".exe")) { toast("Tulis nama berkas lengkap", "Misalnya code.exe", "warn"); return; }
       const r = await API.setWhitelist(rules.app_whitelist.concat([name]));
       if (r.ok) { rules.app_whitelist = r.rules.app_whitelist; $("#wl-new").value = ""; paintChips(); toast("Aplikasi ditambahkan", name, "ok"); }
       else toast("Gagal", r.error, "error");
@@ -931,22 +961,23 @@
     $("#cat-list").innerHTML = res.categories.map((c) => `
       <label class="check">
         <input type="checkbox" data-cat="${esc(c.key)}" ${active.has(c.key) ? "checked" : ""}>
-        <span>
-          <div class="check__name">${esc(c.label)} <span class="tag">${c.count} situs</span></div>
-          <div class="check__desc">${esc(c.description)}</div>
+        <span class="check__main">
+          <span class="check__name">${esc(c.label)}</span>
+          <span class="check__desc" style="display:block">${esc(c.description)}</span>
         </span>
+        <span class="check__count">${c.count} situs</span>
       </label>`).join("");
     $$("#cat-list [data-cat]").forEach((box) => box.addEventListener("change", async () => {
       const keys = $$("#cat-list [data-cat]").filter((b) => b.checked).map((b) => b.dataset.cat);
       const r = await API.setSiteCategories(keys);
-      if (r.ok) { paintSiteCount(r.rules); toast("Daftar situs diperbarui", siteCountText(r.rules), "ok"); }
+      if (r.ok) { paintSiteCount(r.rules); toast("Daftar situs disimpan", siteCountText(r.rules), "ok"); }
       else { toast("Gagal", r.error, "error"); box.checked = !box.checked; }
     }));
 
     // sites added by hand
     function paintSiteCount(next) {
       rules.site_count = next.site_count;
-      $("#site-count").textContent = `${next.site_count} situs`;
+      $("#site-count").textContent = siteCountLabel(next);
     }
     function paintSites() {
       $("#site-chips").innerHTML = rules.custom_sites.length
@@ -954,7 +985,7 @@
             <span class="chip">${esc(p)}
               <button data-remove-site="${esc(p)}" aria-label="Hapus ${esc(p)}">${icon("x", "")}</button>
             </span>`).join("")
-        : '<span style="color:var(--text-tertiary);font-size:var(--text-sm);padding:2px 4px">Belum ada</span>';
+        : '<span class="chip-input__none">Belum ada</span>';
       $$("#site-chips [data-remove-site]").forEach((b) => b.addEventListener("click", async () => {
         const next = rules.custom_sites.filter((x) => x !== b.dataset.removeSite);
         const r = await API.setCustomSites(next);
@@ -971,7 +1002,7 @@
         const added = r.rules.custom_sites.filter((x) => !rules.custom_sites.includes(x));
         rules.custom_sites = r.rules.custom_sites; $("#site-new").value = ""; paintSites(); paintSiteCount(r.rules);
         toast(added.length ? "Situs ditambahkan" : "Sudah ada di daftar",
-              added.length ? added.join(", ") : "Situs itu sudah diblokir.", added.length ? "ok" : "info");
+              added.length ? added.join(", ") : "", added.length ? "ok" : "info");
       } else toast("Alamat tidak valid", r.error, "warn");
     };
     $("#site-add").addEventListener("click", addSite);
@@ -981,7 +1012,7 @@
     $("#opt-dryrun").addEventListener("change", async (e) => {
       const on = e.target.checked;
       const r = await API.setDryRun(on);
-      if (r.ok) { toast(on ? "Mode uji coba aktif" : "Aturan ditegakkan", "", "ok"); global.App.refresh(); }
+      if (r.ok) { toast(on ? "Uji coba: hanya mencatat" : "Aturan ditegakkan", "", "ok"); global.App.refresh(); }
       else { toast("Gagal", r.error, "error"); e.target.checked = !on; }
     });
     $("#opt-grace-save").addEventListener("click", async (e) => {
@@ -995,33 +1026,33 @@
   /* What the app and site lists do in the current mode (Aturan page). */
   function appsNote(rules) {
     if (rules.mode === "exam") {
-      return `<div class="banner banner--info">${icon("app")}<div>
-        <strong>Mode Ujian: hanya browser.</strong> Daftar ini tidak berlaku saat Ujian;
-        disimpan untuk Praktikum.</div></div>`;
+      return `<div class="banner banner--info"><div><strong>Ujian: hanya browser.</strong>
+        Daftar ini tidak berlaku sekarang dan disimpan untuk Praktikum.</div></div>`;
     }
-    const action = rules.acts ? "akan ditutup otomatis" : "hanya dicatat, tidak ditutup";
-    return `<p style="color:var(--text-secondary);margin-bottom:var(--s-3);font-size:var(--text-sm)">
-      Aplikasi di luar daftar ini ${action}. Browser dan Windows Explorer selalu diizinkan
-      dan tidak dapat dihapus.</p>`;
+    const action = rules.acts ? "ditutup" : "hanya dicatat";
+    return `<p class="block__note" style="margin-bottom:var(--s-3)">Aplikasi lain ${action}.
+      Chrome, Edge, dan Windows Explorer selalu boleh.</p>`;
   }
 
   function sitesNote(rules) {
     if (rules.mode === "exam") {
-      return `<div class="banner banner--info">${icon("globe")}<div>
-        <strong>Mode Ujian: semua kategori diblokir,</strong> ditambah situs tambahan.
-        Pilihan kategori di bawah dipakai saat Praktikum.</div></div>`;
+      return `<div class="banner banner--info"><div><strong>Ujian: semua kategori diblokir.</strong>
+        Centang di bawah berlaku untuk Praktikum.</div></div>`;
     }
     if (rules.mode === "free") {
-      return `<div class="banner banner--info">${icon("globe")}<div>
-        <strong>Mode Bebas: tidak ada situs yang diblokir.</strong>
-        Daftar di bawah dipakai saat Praktikum dan Ujian.</div></div>`;
+      return `<div class="banner banner--info"><div><strong>Bebas: tidak ada yang diblokir.</strong>
+        Daftar ini dipakai saat Praktikum dan Ujian.</div></div>`;
     }
     return "";
   }
 
+  function siteCountLabel(rules) {
+    return rules.mode === "free" ? "tidak berlaku di Bebas" : `${rules.site_count} situs diblokir`;
+  }
+
   function siteCountText(rules) {
     return rules.mode === "free"
-      ? "Disimpan; berlaku saat Praktikum dan Ujian."
+      ? "Berlaku saat Praktikum dan Ujian."
       : `${rules.site_count} situs diblokir.`;
   }
 
@@ -1034,60 +1065,59 @@
     const host = $("#pairing-card");
     if (!host) return;
     const res = await API.getPairing();
+    const head = (aside) => `
+      <div class="block__head"><h2 class="block__title" id="t-pairing">Pemasangan PC baru</h2>
+        ${aside || ""}</div>`;
     if (!res.ok) {
-      host.innerHTML = `
-        <div class="card__head"><span class="card__title">Pemasangan PC baru</span></div>
-        <div class="card__body"></div>`;
-      host.querySelector(".card__body").appendChild(
-        empty({ iconName: "alert", title: "Kode pemasangan tidak dapat dimuat", text: res.error }));
+      host.innerHTML = `${head()}<div class="block__body"></div>`;
+      host.querySelector(".block__body").appendChild(
+        empty({ title: "Kode pemasangan tidak bisa dimuat.", text: res.error }));
       return;
     }
 
     const open = res.open;
     const state = open
-      ? `<span class="status status--online">${icon("dot", "status__icon")}Terbuka</span>`
-      : `<span class="status status--offline">${icon("lock", "status__icon")}Ditutup</span>`;
+      ? `<span class="status status--online">${icon("dot", "status__icon")}Pendaftaran dibuka</span>`
+      : `<span class="status status--offline">${icon("lock", "status__icon")}Pendaftaran ditutup</span>`;
+    const digits = String(res.code).split("").map((d) => `<span class="pairing__digit">${esc(d)}</span>`).join("");
 
     host.innerHTML = `
-      <div class="card__head">
-        <span class="card__title">Pemasangan PC baru</span>
-        <div class="card__actions">${state}</div>
-      </div>
-      <div class="card__body pairing">
+      ${head(state)}
+      <div class="block__body pairing">
         <div class="pairing__code-block">
           <div class="pairing__label" id="pair-code-label">Kode pemasangan</div>
           <div class="pairing__code ${open ? "" : "is-closed"}" aria-labelledby="pair-code-label"
-               aria-describedby="pair-code-note">${esc(groupCode(res.code))}</div>
+               aria-describedby="pair-code-note" aria-label="${esc(groupCode(res.code))}">${digits}</div>
           <div class="pairing__note" id="pair-code-note">${open
-            ? `${res.paired_count} PC sudah terpasang. Kode hanya dipakai sekali per PC.`
-            : `Pendaftaran ditutup: PC baru ditolak meskipun kodenya benar. ${res.paired_count} PC yang sudah terpasang tetap terhubung.`}</div>
+            ? `${res.paired_count} PC sudah terpasang. Satu kode untuk semua PC; tiap PC cukup sekali.`
+            : `PC baru ditolak walau kodenya benar. ${res.paired_count} PC yang sudah terpasang tetap terhubung.`}</div>
           <div class="pairing__actions">
-            <button class="btn btn--sm" id="pair-rotate" ${open ? "" : "disabled"}>Buat kode baru</button>
-            <button class="btn btn--sm" id="pair-toggle">${open ? "Tutup pendaftaran PC baru" : "Buka pendaftaran PC baru"}</button>
+            <button class="btn btn--sm" id="pair-rotate" ${open ? "" : "disabled"}>Ganti kode</button>
+            <button class="btn btn--sm" id="pair-toggle">${open ? "Tutup pendaftaran" : "Buka pendaftaran"}</button>
           </div>
         </div>
         <div class="pairing__steps">
           <div class="pairing__label">Cara memasang</div>
           <ol class="steps">
-            <li>Pasang Lab Sentinel Agent di PC peserta.</li>
-            <li>Jalankan sekali dengan kode ini:
+            <li>Jalankan installer Lab Sentinel Agent di PC peserta.</li>
+            <li>Ketik kode di atas saat diminta, atau jalankan
               <code class="cmd">labsentinel-agent --pair ${esc(res.code)}</code></li>
-            <li>PC muncul di <strong>Layar PC</strong> dalam beberapa detik. Kode tidak perlu diketik lagi.</li>
+            <li>PC muncul di <strong>Layar PC</strong> dalam beberapa detik.</li>
           </ol>
-          <p class="pairing__hint">Setelah semua PC lab terpasang, tutup pendaftaran agar tidak ada PC lain yang bisa ikut terhubung.</p>
+          <p class="pairing__hint">Kalau semua PC lab sudah terpasang, tutup pendaftaran supaya tidak ada PC lain yang ikut masuk.</p>
         </div>
       </div>`;
 
     $("#pair-rotate").addEventListener("click", async (e) => {
       const ok = await confirm({
-        title: "Buat kode pemasangan baru?",
+        title: "Ganti kode pemasangan?",
         message: "Kode lama langsung tidak berlaku. PC yang sudah terpasang tidak terpengaruh.",
-        confirmLabel: "Buat kode baru",
+        confirmLabel: "Ganti kode",
       });
       if (!ok) return;
       await withBusy(e.currentTarget, async () => {
         const r = await API.rotatePairingCode();
-        if (r.ok) { toast("Kode baru dibuat", groupCode(r.code), "ok"); renderPairing(); }
+        if (r.ok) { toast("Kode diganti", groupCode(r.code), "ok"); renderPairing(); }
         else toast("Gagal", r.error, "error");
       });
     });
@@ -1096,7 +1126,7 @@
       if (open) {
         const ok = await confirm({
           title: "Tutup pendaftaran PC baru?",
-          message: "PC yang belum terpasang tidak akan bisa terhubung sampai pendaftaran dibuka lagi. PC yang sudah terpasang tetap terhubung seperti biasa.",
+          message: "PC yang belum terpasang tidak bisa masuk sampai pendaftaran dibuka lagi. PC yang sudah terpasang tidak terpengaruh.",
           confirmLabel: "Tutup pendaftaran",
         });
         if (!ok) return;
@@ -1105,7 +1135,7 @@
         const r = await API.setPairingOpen(!open);
         if (r.ok) {
           toast(r.open ? "Pendaftaran dibuka" : "Pendaftaran ditutup",
-                r.open ? "PC baru bisa dipasang dengan kode." : "PC baru tidak bisa terhubung.", "ok");
+                r.open ? "PC baru bisa dipasang dengan kode." : "PC baru tidak bisa masuk.", "ok");
           renderPairing();
         } else toast("Gagal", r.error, "error");
       });
@@ -1134,7 +1164,7 @@
     }
     const opt = (s) => {
       const when = datetime(s.started_at);
-      const live = s.status === "active" ? " · berjalan" : "";
+      const live = s.status === "active" ? " (berjalan)" : "";
       return `<option value="${s.id}" ${State.reportSession === s.id ? "selected" : ""}>
         ${esc(s.name)} — ${esc(when)}${live}</option>`;
     };
@@ -1151,7 +1181,7 @@
       const none = State.reportSession === null;
       ["#report-pdf", "#report-xlsx"].forEach((sel) => {
         $(sel).disabled = none;
-        $(sel).title = none ? "Pilih satu sesi untuk membuat laporan." : "";
+        $(sel).title = none ? "Pilih satu sesi dulu; laporan dibuat per sesi." : "";
       });
     };
     sync();
@@ -1165,7 +1195,7 @@
         const r = await API.exportReport(State.reportSession, fmt);
         if (!r.ok) { toast("Laporan gagal dibuat", r.error, "error"); return; }
         saveBase64(r.b64, r.filename, r.mime);
-        toast("Laporan dibuat", r.saved_to ? `Salinan tersimpan di ${r.saved_to}` : r.filename, "ok");
+        toast("Laporan diunduh", r.saved_to ? `Salinannya ada di ${r.saved_to}` : r.filename, "ok");
       });
     };
     $("#report-pdf").addEventListener("click", download("pdf"));
@@ -1197,34 +1227,34 @@
     const res = await API.getViolations(State.reportSession || null, 1000);
     if (!res.ok) {
       host.innerHTML = "";
-      host.appendChild(empty({ iconName: "alert", title: "Gagal memuat", text: res.error }));
+      host.appendChild(empty({ title: "Pelanggaran tidak bisa dimuat.", text: res.error }));
       return;
     }
     if (!res.violations.length) {
       host.innerHTML = "";
       host.appendChild(empty({
-        iconName: "check", title: "Belum ada pelanggaran tercatat",
+        title: State.reportSession ? "Tidak ada pelanggaran di sesi ini." : "Belum ada pelanggaran.",
         text: State.reportSession
-          ? "Tidak ada pelanggaran pada sesi ini. Laporannya tetap bisa diunduh sebagai bukti sesi berjalan tertib."
-          : "Riwayat akan terisi saat peserta membuka aplikasi atau situs yang tidak diizinkan.",
+          ? "Laporannya tetap bisa diunduh sebagai catatan bahwa sesi berjalan tertib."
+          : "",
       }));
       return;
     }
     host.innerHTML = `
       <table class="table table--clickable">
         <thead><tr>
-          <th style="width:130px">Waktu</th><th style="width:150px">PC</th>
-          <th>Aplikasi / situs</th><th style="width:190px">Jenis</th>
-          <th style="width:90px" class="cell--right">Bukti</th>
+          <th style="width:130px">Waktu</th><th style="width:130px">PC</th>
+          <th>Aplikasi atau situs</th><th style="width:230px">Jenis</th>
+          <th style="width:110px" class="cell--right">Tangkapan layar</th>
         </tr></thead>
         <tbody>${res.violations.map((v) => `
           <tr data-id="${v.id}">
-            <td class="num">${esc(datetime(v.occurred_at))}</td>
-            <td class="truncate">${esc(v.hostname || v.agent_id)}</td>
-            <td class="truncate">${esc(v.subject)}
-              ${v.dry_run ? '<span class="tag tag--muted">hanya dicatat</span>' : ""}</td>
+            <td class="cell--time">${esc(datetime(v.occurred_at))}</td>
+            <td class="cell--pc truncate">${esc(v.hostname || v.agent_id)}</td>
+            <td>${esc(v.subject)}
+              ${v.dry_run ? '<span class="cell__note">dicatat saja, tidak ditindak</span>' : ""}</td>
             <td>${esc(violationLabel(v.kind))}
-              ${v.detected_from_title ? '<span class="tag tag--warn">judul jendela</span>' : ""}</td>
+              ${v.detected_from_title ? '<span class="cell__note">terbaca dari judul jendela</span>' : ""}</td>
             <td class="cell--right">${v.has_screenshot ? "Ada" : "—"}</td>
           </tr>`).join("")}
         </tbody>
@@ -1271,36 +1301,47 @@
     return code;
   }
 
+  // Stored values stay as written; only how they read changes.
+  function auditTarget(target) {
+    if (!target) return "—";
+    return target === "all" || target === "semua" ? "semua PC" : target;
+  }
+
+  function auditResult(result) {
+    if (!result) return "—";
+    return result === "ok" ? "berhasil" : result;
+  }
+
   async function renderAudit() {
     const host = $("#audit-table");
     host.innerHTML = '<div class="skeleton" style="height:200px;margin:var(--s-4)"></div>';
     const res = await API.getAudit();
     if (!res.ok) {
       host.innerHTML = "";
-      host.appendChild(empty({ iconName: "alert", title: "Gagal memuat", text: res.error }));
+      host.appendChild(empty({ title: "Catatan tidak bisa dimuat.", text: res.error }));
       return;
     }
     if (!res.entries.length) {
       host.innerHTML = "";
       host.appendChild(empty({
-        iconName: "history", title: "Belum ada aktivitas",
-        text: "Setiap tindakan pengawas — menjeda, melanjutkan, mengganti aturan — akan tercatat di sini.",
+        title: "Belum ada catatan.",
+        text: "Menjeda PC, mengganti aturan, memulai sesi: semuanya tercatat di sini.",
       }));
       return;
     }
     host.innerHTML = `
       <table class="table">
         <thead><tr>
-          <th style="width:150px">Waktu</th><th style="width:130px">Oleh</th>
-          <th style="width:300px">Tindakan</th><th>Sasaran</th><th style="width:170px">Hasil</th>
+          <th style="width:130px">Waktu</th><th style="width:110px">Oleh</th>
+          <th style="width:340px">Tindakan</th><th>Untuk</th><th style="width:170px">Hasil</th>
         </tr></thead>
         <tbody>${res.entries.map((e) => `
           <tr>
-            <td class="num">${esc(datetime(e.ts))}</td>
+            <td class="cell--time">${esc(datetime(e.ts))}</td>
             <td>${esc(e.actor)}</td>
             <td title="${esc(e.action)}">${esc(actionLabel(e.action))}</td>
-            <td class="truncate">${esc(e.target || "—")}</td>
-            <td>${esc(e.result || "—")}</td>
+            <td class="truncate">${esc(auditTarget(e.target))}</td>
+            <td>${esc(auditResult(e.result))}</td>
           </tr>`).join("")}
         </tbody>
       </table>`;
