@@ -11,8 +11,8 @@ PROFILE_LABELS: dict[str, dict[str, str]] = {
     "exam": {
         "label": "Ujian",
         "summary": "Paling ketat",
-        "apps": "Hanya browser",
-        "sites": "Semua kategori + situs tambahan diblokir",
+        "apps": "Hanya Chrome dan Edge",
+        "sites": "Semua kategori dan situs tambahan diblokir",
         "description": (
             "Hanya Chrome dan Edge yang boleh berjalan; aplikasi untuk Praktikum "
             "tidak berlaku. Semua kategori situs dan situs tambahan diblokir."
@@ -21,8 +21,8 @@ PROFILE_LABELS: dict[str, dict[str, str]] = {
     "lab": {
         "label": "Praktikum",
         "summary": "Sedang",
-        "apps": "Browser + aplikasi mata kuliah",
-        "sites": "Kategori pilihan + situs tambahan diblokir",
+        "apps": "Browser dan aplikasi yang diizinkan",
+        "sites": "Kategori pilihan dan situs tambahan diblokir",
         "description": (
             "Browser ditambah aplikasi yang Anda izinkan, misalnya VS Code atau "
             "XAMPP. Kategori situs yang Anda pilih dan situs tambahan diblokir."
@@ -31,7 +31,7 @@ PROFILE_LABELS: dict[str, dict[str, str]] = {
     "free": {
         "label": "Bebas",
         "summary": "Hanya memantau",
-        "apps": "Semua aplikasi",
+        "apps": "Tidak ada yang ditutup",
         "sites": "Tidak ada yang diblokir",
         "description": (
             "Tidak ada aplikasi yang ditutup dan tidak ada situs yang diblokir. "

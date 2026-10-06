@@ -23,7 +23,7 @@
           <div class="toast__title">${esc(title)}</div>
           ${text ? `<div class="toast__text">${esc(text)}</div>` : ""}
         </div>
-        <button class="btn btn--icon btn--sm btn--ghost" aria-label="Tutup pemberitahuan">
+        <button class="btn btn--icon btn--sm btn--ghost" aria-label="Tutup">
           ${icon("x", "btn__icon")}
         </button>
       </div>`);
@@ -149,7 +149,7 @@
         title,
         build: (body) => {
           body.innerHTML = `
-            <p style="font-size:var(--text-md)">${esc(message)}</p>
+            <p>${esc(message)}</p>
             ${warning ? `<div class="dialog__warn" style="margin-top:var(--s-4)">
                 ${icon("alert")}<div>${esc(warning)}</div></div>` : ""}`;
         },
@@ -178,17 +178,16 @@
   }
 
   /* ----------------------------------------------------------- empty state */
-  function empty({ iconName, title, text, actionLabel, onAction }) {
+  // Plain words, left-aligned with the content around them: a big centred
+  // icon adds nothing a sentence does not already say (ADR-0005).
+  function empty({ title, text, actionLabel, onAction }) {
     const node = global.U.el(`
       <div class="empty">
-        <svg class="empty__icon" aria-hidden="true"><use href="#i-${esc(iconName || "monitor")}"/></svg>
         <div class="empty__title">${esc(title)}</div>
-        <p class="empty__text">${esc(text || "")}</p>
+        ${text ? `<p class="empty__text">${esc(text)}</p>` : ""}
       </div>`);
     if (actionLabel && onAction) {
-      const btn = global.U.el(
-        `<button class="btn btn--primary" style="margin-top:var(--s-2)">${esc(actionLabel)}</button>`
-      );
+      const btn = global.U.el(`<button class="btn">${esc(actionLabel)}</button>`);
       btn.addEventListener("click", onAction);
       node.appendChild(btn);
     }
