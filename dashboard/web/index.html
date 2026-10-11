@@ -4,190 +4,147 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lab Sentinel</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1.5' y='3.5' width='21' height='14' rx='1' fill='%2317191c'/%3E%3Crect x='4' y='6' width='16' height='9' fill='%23f3f3f0'/%3E%3Crect x='15.5' y='7.5' width='3' height='3' fill='%23b42a1d'/%3E%3Crect x='8' y='19' width='8' height='2' fill='%2317191c'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232f5fd0'/%3E%3Cpath transform='translate(3 3) scale(.9)' fill='%23fff' d='M4 2a2 2 0 0 0-2 2v4h1V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v4h1V4a2 2 0 0 0-2-2zM2 13v-2h1v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2h1v2a2 2 0 0 1-2 2h-3v2h1.5a.5.5 0 0 1 0 1h-9a.5.5 0 0 1 0-1H7v-2H4a2 2 0 0 1-2-2m10 2H8v2h4zM7.98 4.35a.5.5 0 0 0-.94-.04L5.16 9H2.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 .46-.31l1.48-3.7 2.08 6.66a.5.5 0 0 0 .93.07L13 7.62l1.05 2.1a.5.5 0 0 0 .45.28h3a.5.5 0 1 0 0-1h-2.7l-1.35-2.72a.5.5 0 0 0-.9 0l-2.44 4.89z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <script type="text/javascript" src="/eel.js"></script>
 </head>
 <body>
 
-<!-- Icon sprite: real vector icons, no emoji, so they inherit colour and scale. -->
+<!-- Icon sprite: Fluent UI System Icons (MIT, Microsoft), the icon set Windows
+     itself uses, so the dashboard reads as a native Windows tool. No emoji. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
-    <symbol id="i-mark" viewBox="0 0 24 24">
-      <rect x="1.5" y="3.5" width="21" height="14" rx="1" fill="currentColor"/>
-      <rect x="4" y="6" width="16" height="9" style="fill:var(--band)"/>
-      <rect x="15.5" y="7.5" width="3" height="3" style="fill:var(--danger-on-dark)"/>
-      <rect x="8" y="19" width="8" height="2" fill="currentColor"/>
-    </symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 3l7 3v6c0 4.4-3 8.3-7 9-4-0.7-7-4.6-7-9V6l7-3z"/><path d="M9.5 12.2l1.8 1.8 3.4-3.6"/>
-    </symbol>
-    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 10.5L12 4l9 6.5V19a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>
-    </symbol>
-    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
-    </symbol>
-    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
-    </symbol>
-    <symbol id="i-report" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M14 3H7a1 1 0 00-1 1v16a1 1 0 001 1h10a1 1 0 001-1V7z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/>
-    </symbol>
-    <symbol id="i-history" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 12a9 9 0 109-9 9 9 0 00-6.7 3"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>
-    </symbol>
-    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-      <path d="M9 5v14M15 5v14"/>
-    </symbol>
-    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.5v13l11-6.5z"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
-    </symbol>
-    <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20 4H4a1 1 0 00-1 1v10a1 1 0 001 1h3v4l5-4h8a1 1 0 001-1V5a1 1 0 00-1-1z"/>
-    </symbol>
-    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 4l9 16H3z"/><path d="M12 10v4"/><circle cx="12" cy="17.2" r="0.6" fill="currentColor"/>
-    </symbol>
-    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 12.5l4.5 4.5L19 7.5"/>
-    </symbol>
-    <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></symbol>
-    <symbol id="i-dot-hollow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="6"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-      <circle cx="11" cy="11" r="6"/><path d="M15.5 15.5L20 20"/>
-    </symbol>
-    <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/>
-    </symbol>
-    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 3l18 18"/><path d="M10.6 10.7a2 2 0 002.8 2.8"/>
-      <path d="M9.4 5.3A9.6 9.6 0 0112 5c5 0 9 4.5 9 7a11 11 0 01-2.4 3.6M6.5 6.8C4.3 8.3 3 10.4 3 12c0 2.5 4 7 9 7a9.3 9.3 0 003.6-.7"/>
-    </symbol>
-    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-      <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
-    </symbol>
-    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>
-    </symbol>
-    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 4v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>
-    </symbol>
-    <symbol id="i-app" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 9h16"/><circle cx="7" cy="6.5" r="0.6" fill="currentColor"/>
-    </symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 010 18 14 14 0 010-18z"/>
-    </symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 1.9"/>
-    </symbol>
+    <symbol id="i-home" viewBox="0 0 20 20" fill="currentColor"><path d="M9 2.39a1.5 1.5 0 0 1 2 0l5.5 4.94c.32.28.5.69.5 1.12v7.05c0 .83-.67 1.5-1.5 1.5H13a1.5 1.5 0 0 1-1.5-1.5V12a.5.5 0 0 0-.5-.5H9a.5.5 0 0 0-.5.5v3.5c0 .83-.67 1.5-1.5 1.5H4.5A1.5 1.5 0 0 1 3 15.5V8.45c0-.43.18-.84.5-1.12zm1.33.74a.5.5 0 0 0-.66 0l-5.5 4.94a.5.5 0 0 0-.17.38v7.05c0 .28.22.5.5.5H7a.5.5 0 0 0 .5-.5V12c0-.83.67-1.5 1.5-1.5h2c.83 0 1.5.67 1.5 1.5v3.5c0 .28.22.5.5.5h2.5a.5.5 0 0 0 .5-.5V8.45a.5.5 0 0 0-.17-.38z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 20 20" fill="currentColor"><path d="M7.5 11c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 2 16.5v-4c0-.83.67-1.5 1.5-1.5zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m-9-10C8.33 2 9 2.67 9 3.5v4C9 8.33 8.33 9 7.5 9h-4A1.5 1.5 0 0 1 2 7.5v-4C2 2.67 2.67 2 3.5 2zm9 0c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-4A1.5 1.5 0 0 1 11 7.5v-4c0-.83.67-1.5 1.5-1.5zm-9 1h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5m9 0h-4a.5.5 0 0 0-.5.5v4c0 .28.22.5.5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-.5-.5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 20 20" fill="currentColor"><path d="M14.95 5a2.5 2.5 0 0 0-4.9 0H2.5a.5.5 0 0 0 0 1h7.55a2.5 2.5 0 0 0 4.9 0h2.55a.5.5 0 0 0 0-1zM12.5 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3m-2.55 7a2.5 2.5 0 0 0-4.9 0H2.5a.5.5 0 0 0 0 1h2.55a2.5 2.5 0 0 0 4.9 0h7.55a.5.5 0 0 0 0-1zM7.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3"/></symbol>
+    <symbol id="i-report" viewBox="0 0 20 20" fill="currentColor"><path d="M6.5 10a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1zM4 4c0-1.1.9-2 2-2h4.59q.62.01 1.06.44l3.91 3.91c.28.28.44.67.44 1.06V16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8h-3.5A1.5 1.5 0 0 1 10 6.5V3zm5.5 4h3.3L11 3.2v3.3c0 .28.22.5.5.5"/></symbol>
+    <symbol id="i-history" viewBox="0 0 20 20" fill="currentColor"><path d="M10 4a6 6 0 1 1-5.98 5.54.5.5 0 1 0-1-.08L3 10a7 7 0 1 0 2-4.9V3.5a.5.5 0 0 0-1 0v3c0 .28.22.5.5.5h3a.5.5 0 0 0 0-1H5.53c1.1-1.23 2.7-2 4.47-2m0 2.5a.5.5 0 0 0-1 0v4c0 .28.22.5.5.5h3a.5.5 0 0 0 0-1H10z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 20 20" fill="currentColor"><path d="M5 2a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm8 0a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></symbol>
+    <symbol id="i-pause-filled" viewBox="0 0 20 20" fill="currentColor"><path d="M5 2a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm8 0a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 20 20" fill="currentColor"><path d="M17.22 8.68a1.5 1.5 0 0 1 0 2.63l-10 5.5A1.5 1.5 0 0 1 5 15.5v-11A1.5 1.5 0 0 1 7.22 3.2z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1a4 4 0 0 1 4 4v2.05a2.5 2.5 0 0 1 2 2.45v6a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 15.5v-6c0-1.2.86-2.22 2-2.45V5a4 4 0 0 1 4-4M6.5 8C5.67 8 5 8.67 5 9.5v6c0 .83.67 1.5 1.5 1.5h7c.83 0 1.5-.67 1.5-1.5v-6c0-.83-.67-1.5-1.5-1.5zm3.5 3.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2M10 2a3 3 0 0 0-3 3v2h6V5a3 3 0 0 0-3-3"/></symbol>
+    <symbol id="i-message" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 1-3.61 15.14l-.12-.07-3.65.92a.5.5 0 0 1-.62-.45v-.08l.01-.08.92-3.64-.07-.12a8 8 0 0 1-.83-2.9l-.02-.37L2 10a8 8 0 0 1 8-8m0 1a7 7 0 0 0-6.1 10.42.5.5 0 0 1 .06.28l-.02.1-.75 3.01 3.02-.75.19-.01.09.02.09.04A7 7 0 1 0 10 3m.5 8a.5.5 0 0 1 .09 1H7.5a.5.5 0 0 1-.09-1h3.09m2-3a.5.5 0 0 1 .09 1H7.5a.5.5 0 0 1-.09-1h5.09"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 20 20" fill="currentColor"><path d="M7.37 3.56a3 3 0 0 1 5.26 0l5.5 10A3 3 0 0 1 15.5 18h-11a3 3 0 0 1-2.63-4.44zm4.38.48a2 2 0 0 0-3.5 0l-5.5 10A2 2 0 0 0 4.5 17h11a2 2 0 0 0 1.75-2.96zM10 12.75a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5m0-6.25c.28 0 .5.22.5.5v4a.5.5 0 0 1-1 0V7c0-.28.22-.5.5-.5"/></symbol>
+    <symbol id="i-alert-filled" viewBox="0 0 20 20" fill="currentColor"><path d="M7.37 3.56a3 3 0 0 1 5.26 0l5.5 10A3 3 0 0 1 15.5 18h-11a3 3 0 0 1-2.63-4.44zM10 12.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5m0-6.25a.5.5 0 0 0-.5.5v4a.5.5 0 0 0 1 0V7a.5.5 0 0 0-.5-.5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 20 20" fill="currentColor"><path d="M3.37 10.17a.5.5 0 0 0-.74.66l4 4.5c.19.22.52.23.72.02l10.5-10.5a.5.5 0 0 0-.7-.7L7.02 14.27z"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16"/></symbol>
+    <symbol id="i-dot-hollow" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14m-8 7a8 8 0 1 1 16 0 8 8 0 0 1-16 0"/></symbol>
+    <symbol id="i-search" viewBox="0 0 20 20" fill="currentColor"><path d="M13.73 14.44a6.5 6.5 0 1 1 .7-.7l3.42 3.4a.5.5 0 0 1-.63.77l-.07-.06zm-.71-.71A5.5 5.5 0 0 0 15 9.5a5.5 5.5 0 1 0-1.98 4.23"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 20 20" fill="currentColor"><path d="M4 2a2 2 0 0 0-2 2v9c0 1.1.9 2 2 2h3v2H5.5a.5.5 0 0 0 0 1h9a.5.5 0 0 0 0-1H13v-2h3a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm8 13v2H8v-2zM3 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-desktop-off" viewBox="0 0 20 20" fill="currentColor"><path d="m2.28 2.98-.13-.13a.5.5 0 1 1 .7-.7l15 15a.5.5 0 0 1-.7.7L14.29 15H13v2h1.5a.5.5 0 0 1 0 1h-9a.5.5 0 0 1 0-1H7v-2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 .28-1.02M13.29 14 3.03 3.74 3 4v9a1 1 0 0 0 1 1zM17 13a1 1 0 0 1-.89 1l.8.78A2 2 0 0 0 18 13V4a2 2 0 0 0-2-2H4.12l1 1H16a1 1 0 0 1 1 1zm-5 2H8v2h4z"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 20 20" fill="currentColor"><path d="M2.85 2.15a.5.5 0 1 0-.7.7l3.5 3.5a8 8 0 0 0-3.37 5.05.5.5 0 1 0 .98.2 7 7 0 0 1 3.1-4.53l1.6 1.59a3.5 3.5 0 1 0 4.88 4.89l4.3 4.3a.5.5 0 0 0 .71-.7zm9.27 10.68a2.5 2.5 0 1 1-3.45-3.45zm-2-4.83 3.38 3.38A3.5 3.5 0 0 0 10.12 8M10 6q-.86 0-1.67.21l-.8-.8A8 8 0 0 1 10 5c3.7 0 6.94 2.67 7.72 6.4a.5.5 0 0 1-.98.2A7 7 0 0 0 10 6"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2c.28 0 .5.22.5.5v1a.5.5 0 0 1-1 0v-1c0-.28.22-.5.5-.5m0 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8m0-1a3 3 0 1 1 0-6 3 3 0 0 1 0 6m7.5-2.5a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1zM10 16c.28 0 .5.22.5.5v1a.5.5 0 0 1-1 0v-1c0-.28.22-.5.5-.5m-6.5-5.5a.5.5 0 0 0 0-1H2.46a.5.5 0 0 0 0 1zm.65-6.35c.2-.2.5-.2.7 0l1 1a.5.5 0 1 1-.7.7l-1-1a.5.5 0 0 1 0-.7m.7 11.7a.5.5 0 0 1-.7-.7l1-1a.5.5 0 0 1 .7.7zm11-11.7a.5.5 0 0 0-.7 0l-1 1a.5.5 0 0 0 .7.7l1-1a.5.5 0 0 0 0-.7m-.7 11.7a.5.5 0 0 0 .7-.7l-1-1a.5.5 0 0 0-.7.7z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 20 20" fill="currentColor"><path d="M15.5 13.5A6.98 6.98 0 0 1 4 14.39c2.83-1.09 4.56-2.42 5.6-4.4 1.04-2 1.33-4.16.75-6.9q1.36.17 2.58.87a7 7 0 0 1 2.55 9.54M5.45 16.92A7.98 7.98 0 1 0 9.88 2.04a.6.6 0 0 0-.61.73c.69 2.82.43 4.88-.55 6.76-.94 1.78-2.55 3.03-5.55 4.1a.6.6 0 0 0-.3.9 8 8 0 0 0 2.59 2.39"/></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20" fill="currentColor"><path d="m4.09 4.22.06-.07a.5.5 0 0 1 .63-.06l.07.06L10 9.29l5.15-5.14a.5.5 0 0 1 .63-.06l.07.06c.18.17.2.44.06.63l-.06.07L10.71 10l5.14 5.15c.18.17.2.44.06.63l-.06.07a.5.5 0 0 1-.63.06l-.07-.06L10 10.71l-5.15 5.14a.5.5 0 0 1-.63.06l-.07-.06a.5.5 0 0 1-.06-.63l.06-.07L9.29 10 4.15 4.85a.5.5 0 0 1-.06-.63l.06-.07z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 20 20" fill="currentColor"><path d="M15.5 17a.5.5 0 0 1 .09 1H4.5a.5.5 0 0 1-.09-1H15.5M10 2a.5.5 0 0 1 .5.41V14.3l3.64-3.65a.5.5 0 0 1 .64-.06l.07.06c.17.17.2.44.06.63l-.06.07-4.5 4.5a.5.5 0 0 1-.25.14L10 16a.5.5 0 0 1-.4-.2l-4.46-4.45a.5.5 0 0 1 .64-.76l.07.06 3.65 3.64V2.5c0-.27.22-.5.5-.5"/></symbol>
+    <symbol id="i-app" viewBox="0 0 20 20" fill="currentColor"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h9A2.5 2.5 0 0 1 17 5.5v9a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 3 14.5zM5.5 4C4.67 4 4 4.67 4 5.5V6h12v-.5c0-.83-.67-1.5-1.5-1.5zM16 7H4v7.5c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5zM5 9a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1zm3 0H6v5h2zm2 1.5c0-.28.22-.5.5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5m.5-2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 20 20" fill="currentColor"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16m0-15c.66 0 1.4.59 2.02 1.9q.33.71.56 1.6H7.42q.23-.89.56-1.6C8.59 3.6 9.34 3 10 3M7.07 4.49q-.4.9-.68 2.01H3.94A7 7 0 0 1 7.7 3.38q-.36.5-.64 1.1M6.2 7.5a16 16 0 0 0 0 5H3.46a7 7 0 0 1 0-5zm.2 6q.26 1.12.68 2.01.28.61.64 1.1a7 7 0 0 1-3.77-3.11zm1.03 0h5.16a9 9 0 0 1-.56 1.6C11.41 16.4 10.66 17 10 17s-1.4-.59-2.02-1.9q-.33-.71-.56-1.6m5.37-1H7.21a15 15 0 0 1 0-5h5.58a15 15 0 0 1 0 5m.82 1h2.45a7 7 0 0 1-3.77 3.12q.36-.5.64-1.1.4-.9.68-2.02m2.93-1h-2.73a16 16 0 0 0 0-5h2.73a7 7 0 0 1 0 5m-4.25-9.12a7 7 0 0 1 3.77 3.12h-2.45a11 11 0 0 0-.68-2.01q-.28-.61-.64-1.1"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16m0 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14m-.5 2a.5.5 0 0 1 .5.41V10h2.5a.5.5 0 0 1 .09 1H9.5a.5.5 0 0 1-.5-.41V5.5c0-.28.22-.5.5-.5"/></symbol>
+    <symbol id="i-frozen" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5.5a4.5 4.5 0 1 0 9 0 4.5 4.5 0 0 0-9 0m1 0a3.5 3.5 0 0 1 5.6-2.8l-4.9 4.9a3.5 3.5 0 0 1-.7-2.1M14.5 9c-.79 0-1.51-.26-2.1-.7l4.9-4.9q.68.9.7 2.1A3.5 3.5 0 0 1 14.5 9m2.5 3.12-1.47-1.22q.6-.1 1.14-.35l.97.8a1 1 0 0 1-.63 1.77h-5.6c-.43 0-.85.2-1.13.52l-3.52 4.07A1 1 0 0 1 5 17.06v-14a1 1 0 0 1 1.64-.77l2.48 2.05Q9 4.9 9 5.5v.03L6 3.06v14l3.52-4.07a2.5 2.5 0 0 1 1.9-.87z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 20 20" fill="currentColor"><path d="M10.5 8.91a.5.5 0 0 0-1 .09v4.6a.5.5 0 0 0 1-.1V8.91m.3-2.16a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0M18 10a8 8 0 1 0-16 0 8 8 0 0 0 16 0M3 10a7 7 0 1 1 14 0 7 7 0 0 1-14 0"/></symbol>
+    <symbol id="i-error" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16m0 1a7 7 0 1 0 0 14 7 7 0 0 0 0-14m0 9.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5M10 6a.5.5 0 0 1 .5.41V11a.5.5 0 0 1-1 .09V6.5c0-.28.22-.5.5-.5"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 20 20" fill="currentColor"><path d="M4 2a2 2 0 0 0-2 2v4h1V4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v4h1V4a2 2 0 0 0-2-2zM2 13v-2h1v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2h1v2a2 2 0 0 1-2 2h-3v2h1.5a.5.5 0 0 1 0 1h-9a.5.5 0 0 1 0-1H7v-2H4a2 2 0 0 1-2-2m10 2H8v2h4zM7.98 4.35a.5.5 0 0 0-.94-.04L5.16 9H2.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 .46-.31l1.48-3.7 2.08 6.66a.5.5 0 0 0 .93.07L13 7.62l1.05 2.1a.5.5 0 0 0 .45.28h3a.5.5 0 1 0 0-1h-2.7l-1.35-2.72a.5.5 0 0 0-.9 0l-2.44 4.89z"/></symbol>
   </defs>
 </svg>
 
 <div class="app">
-  <header class="band">
-    <div class="brand">
-      <svg class="brand__mark" aria-hidden="true"><use href="#i-mark"/></svg>
-      <span class="brand__name">Lab Sentinel</span>
-    </div>
+  <div class="brand">
+    <span class="brand__mark" aria-hidden="true"><svg><use href="#i-pulse"/></svg></span>
+    <span class="brand__name">Lab Sentinel</span>
+  </div>
 
-    <nav class="tabs" aria-label="Navigasi utama">
-      <button class="nav-item" data-page="beranda" aria-current="page">
-        <span class="nav-item__key" aria-hidden="true">1</span><span>Beranda</span>
-      </button>
-      <button class="nav-item" data-page="monitoring">
-        <span class="nav-item__key" aria-hidden="true">2</span><span>Layar PC</span>
-        <span class="nav-item__badge" id="nav-badge" hidden>0</span>
-      </button>
-      <button class="nav-item" data-page="aturan">
-        <span class="nav-item__key" aria-hidden="true">3</span><span>Aturan</span>
-      </button>
-      <button class="nav-item" data-page="laporan">
-        <span class="nav-item__key" aria-hidden="true">4</span><span>Laporan</span>
-      </button>
-      <button class="nav-item" data-page="aktivitas">
-        <span class="nav-item__key" aria-hidden="true">5</span><span>Catatan aktivitas</span>
-      </button>
-    </nav>
-
-    <div class="band__actions">
-      <button class="btn btn--band" id="btn-pause-all">
+  <header class="topbar">
+    <div class="topbar__session" id="topbar-session"></div>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__actions">
+      <button class="btn" id="btn-pause-all">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-pause"/></svg>
         Jeda semua
       </button>
-      <button class="btn btn--band" id="btn-resume-all">
+      <button class="btn btn--primary" id="btn-resume-all">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-play"/></svg>
         Lanjutkan semua
       </button>
-      <button class="btn btn--icon btn--band btn--bare" id="btn-theme" title="Tema terang/gelap"
+      <button class="btn btn--icon btn--ghost" id="btn-theme" title="Tema terang/gelap"
               aria-label="Ganti tema terang atau gelap">
         <svg class="btn__icon" aria-hidden="true"><use href="#i-moon" id="theme-icon"/></svg>
       </button>
     </div>
   </header>
 
-  <div class="sessionline" id="topbar-session" aria-live="polite"></div>
+  <nav class="sidebar" aria-label="Navigasi utama">
+    <button class="nav-item" data-page="beranda" aria-current="page">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-home"/></svg><span>Beranda</span>
+    </button>
+    <button class="nav-item" data-page="monitoring">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-grid"/></svg><span>Layar PC</span>
+      <span class="nav-item__badge" id="nav-badge" hidden>0</span>
+    </button>
+    <button class="nav-item" data-page="aturan">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Aturan</span>
+    </button>
+    <button class="nav-item" data-page="laporan">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-report"/></svg><span>Laporan</span>
+    </button>
+    <button class="nav-item" data-page="aktivitas">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-history"/></svg><span>Catatan aktivitas</span>
+    </button>
+  </nav>
 
   <main class="main" id="main">
     <!-- Beranda -->
     <section class="page is-active" id="page-beranda" aria-labelledby="t-beranda">
       <div class="page__head">
-        <h1 class="page__title" id="t-beranda">Beranda</h1>
+        <div>
+          <h1 class="page__title" id="t-beranda">Beranda</h1>
+        </div>
         <div class="page__actions" id="session-actions"></div>
       </div>
       <div id="dry-run-banner"></div>
-
-      <section class="block" aria-labelledby="t-denah">
-        <div class="block__head">
-          <h2 class="block__title" id="t-denah">Denah lab</h2>
-          <div class="tally" id="stats"></div>
-        </div>
-        <div class="labmap" id="lab-map"></div>
-      </section>
-
+      <div class="stat-row" id="stats"></div>
       <div class="grid-2">
-        <section class="block" aria-labelledby="t-feed">
-          <div class="block__head">
-            <h2 class="block__title" id="t-feed">Pelanggaran terbaru</h2>
-            <button class="btn btn--sm btn--ghost block__more" data-goto="laporan">Buka laporan</button>
+        <div class="card">
+          <div class="card__head">
+            <span class="card__title">Pelanggaran terbaru</span>
+            <div class="card__actions">
+              <button class="btn btn--sm btn--ghost" data-goto="laporan">Lihat semua</button>
+            </div>
           </div>
           <div class="feed" id="recent-feed"></div>
-        </section>
-        <section class="block" aria-labelledby="t-sesi">
-          <div class="block__head"><h2 class="block__title" id="t-sesi">Sesi</h2></div>
-          <div id="session-panel"></div>
-        </section>
+        </div>
+        <div class="card">
+          <div class="card__head"><span class="card__title">Sesi</span></div>
+          <div class="card__body" id="session-panel"></div>
+        </div>
       </div>
     </section>
 
     <!-- Monitoring -->
     <section class="page" id="page-monitoring" aria-labelledby="t-monitoring">
       <div class="page__head">
-        <h1 class="page__title" id="t-monitoring">Layar PC</h1>
-        <span class="page__count" id="monitoring-sub"></span>
+        <div>
+          <h1 class="page__title" id="t-monitoring">Layar PC</h1>
+          <p class="page__subtitle" id="monitoring-sub">Klik PC untuk melihat layarnya lebih besar.</p>
+        </div>
         <div class="page__actions">
           <button class="btn btn--sm" id="btn-select-mode">Pilih PC</button>
         </div>
       </div>
 
       <div class="toolbar">
-        <label class="field">
+        <label class="field" style="min-width:220px">
           <svg class="field__icon" aria-hidden="true"><use href="#i-search"/></svg>
-          <input type="search" id="pc-search" placeholder="Cari PC atau nama pengguna" aria-label="Cari PC">
+          <input type="search" id="pc-search" placeholder="Cari PC atau pengguna" aria-label="Cari PC">
         </label>
-        <div class="segmented" role="group" aria-label="Saring menurut status">
+        <div class="segmented" role="group" aria-label="Saring berdasarkan status">
           <button data-filter="all" aria-pressed="true">Semua</button>
           <button data-filter="online" aria-pressed="false">Aktif</button>
           <button data-filter="paused" aria-pressed="false">Dijeda</button>
           <button data-filter="dropped" aria-pressed="false">Terputus</button>
           <button data-filter="offline" aria-pressed="false">Mati</button>
         </div>
-        <div class="toolbar__spacer"></div>
+        <div class="topbar__spacer"></div>
         <div id="selection-bar" hidden></div>
       </div>
 
@@ -197,7 +154,9 @@
     <!-- Aturan -->
     <section class="page" id="page-aturan" aria-labelledby="t-aturan">
       <div class="page__head">
-        <h1 class="page__title" id="t-aturan">Aturan</h1>
+        <div>
+          <h1 class="page__title" id="t-aturan">Aturan</h1>
+        </div>
       </div>
       <div id="rules-content"></div>
     </section>
@@ -205,19 +164,23 @@
     <!-- Laporan -->
     <section class="page" id="page-laporan" aria-labelledby="t-laporan">
       <div class="page__head">
-        <h1 class="page__title" id="t-laporan">Laporan</h1>
+        <div>
+          <h1 class="page__title" id="t-laporan">Laporan</h1>
+        </div>
         <div class="page__actions" id="report-actions"></div>
       </div>
-      <div class="register"><div class="table-wrap" id="violations-table"></div></div>
+      <div class="card"><div class="table-wrap" id="violations-table"></div></div>
     </section>
 
     <!-- Aktivitas -->
     <section class="page" id="page-aktivitas" aria-labelledby="t-aktivitas">
       <div class="page__head">
-        <h1 class="page__title" id="t-aktivitas">Catatan aktivitas</h1>
-        <span class="page__count">Tidak bisa diubah atau dihapus dari dashboard.</span>
+        <div>
+          <h1 class="page__title" id="t-aktivitas">Catatan aktivitas</h1>
+          <p class="page__subtitle">Tidak bisa diubah atau dihapus dari dashboard.</p>
+        </div>
       </div>
-      <div class="register"><div class="table-wrap" id="audit-table"></div></div>
+      <div class="card"><div class="table-wrap" id="audit-table"></div></div>
     </section>
   </main>
 </div>
