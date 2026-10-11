@@ -54,32 +54,259 @@ from labsentinel_shared.protocol import (  # noqa: E402
 from labsentinel_shared.rules import RuleSet  # noqa: E402
 
 ROOMS = ["LAB-A", "LAB-B"]
-STUDENTS = ["andi", "budi", "citra", "dewi", "eka", "fajar", "gita", "hadi",
-            "intan", "joko", "kirana", "lukman", "maya", "nanda", "oka", "putri"]
+STUDENTS = [
+    "andi",
+    "budi",
+    "citra",
+    "dewi",
+    "eka",
+    "fajar",
+    "gita",
+    "hadi",
+    "intan",
+    "joko",
+    "kirana",
+    "lukman",
+    "maya",
+    "nanda",
+    "oka",
+    "putri",
+]
 APPS = ["game.exe", "steam.exe", "discord.exe", "minecraft.exe", "epicgames.exe"]
-SITES = [("facebook.com", "Facebook - Google Chrome"),
-         ("chat.openai.com", "ChatGPT - Google Chrome"),
-         ("roblox.com", "Roblox - Google Chrome")]
+SITES = [
+    ("facebook.com", "Facebook - Google Chrome"),
+    ("chat.openai.com", "ChatGPT - Google Chrome"),
+    ("roblox.com", "Roblox - Google Chrome"),
+]
 
 
-def make_frame(label: str, state: str, width: int, height: int) -> bytes:
-    """A synthetic 'screen' so the grid shows something recognisable."""
+# What each simulated participant has open: a code editor or a browser page,
+# drawn like a Windows 11 desktop so the dashboard shows believable screens.
+SCENES = ["code", "browser", "code", "docs", "browser", "code", "docs", "code"]
+CODE = [
+    [("kw", "def "), ("fn", "hitung_rata"), ("tx", "(nilai):")],
+    [("tx", "    total = "), ("num", "0")],
+    [("kw", "    for "), ("tx", "n "), ("kw", "in "), ("tx", "nilai:")],
+    [("tx", "        total += n")],
+    [("kw", "    return "), ("tx", "total / "), ("fn", "len"), ("tx", "(nilai)")],
+    [],
+    [("cm", "# Soal 2: urutkan data mahasiswa")],
+    [("kw", "def "), ("fn", "urutkan"), ("tx", "(data):")],
+    [
+        ("kw", "    return "),
+        ("fn", "sorted"),
+        ("tx", "(data, key="),
+        ("kw", "lambda "),
+        ("tx", "m: m.nim)"),
+    ],
+    [],
+    [
+        ("tx", "data = ["),
+        ("st", "'2301'"),
+        ("tx", ", "),
+        ("st", "'2307'"),
+        ("tx", ", "),
+        ("st", "'2299'"),
+        ("tx", "]"),
+    ],
+    [("fn", "print"), ("tx", "(urutkan(data))")],
+]
+CODE_COLORS = {
+    "kw": (197, 134, 192),
+    "fn": (220, 220, 170),
+    "tx": (212, 212, 212),
+    "num": (181, 206, 168),
+    "st": (206, 145, 120),
+    "cm": (106, 153, 85),
+}
+
+
+def _font(px: float, mono: bool = False):
+    from PIL import ImageFont
+
+    size = max(6, round(px))
+    if mono:  # Consolas on Windows, DejaVu on Linux; else Pillow's own face
+        for name in ("consola.ttf", "DejaVuSansMono.ttf"):
+            with contextlib.suppress(OSError):
+                return ImageFont.truetype(name, size)
+    return ImageFont.load_default(size=size)
+
+
+def make_frame(
+    label: str,
+    state: str,
+    width: int,
+    height: int,
+    *,
+    scene: str | None = None,
+    url: str | None = None,
+) -> bytes:
+    """A synthetic Windows desktop for one PC: wallpaper, taskbar and an app.
+
+    ``scene`` picks the open app ("code", "browser" or "docs"); ``url`` puts a
+    site in the browser, which is how violation screenshots show the page.
+    """
     from PIL import Image, ImageDraw
 
-    hue = (abs(hash(label)) % 360) / 360.0
-    import colorsys
+    u = width / 1280  # every size below is in 1280-wide units
+    index = sum(ord(c) for c in label)
+    scene = scene or SCENES[index % len(SCENES)]
+    now = time.localtime()
 
-    r, g, b = colorsys.hsv_to_rgb(hue, 0.25, 0.22 if state != "paused" else 0.14)
-    img = Image.new("RGB", (width, height), (int(r * 255), int(g * 255), int(b * 255)))
+    img = Image.new("RGB", (width, height), (0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rectangle([0, 0, width - 1, int(height * 0.09)], fill=(28, 32, 40))
-    for i in range(6):
-        y = int(height * (0.22 + i * 0.11))
-        d.rectangle([int(width * 0.08), y, int(width * (0.35 + 0.5 * random.random())), y + 6],
-                    fill=(255, 255, 255, 40))
-    d.text((int(width * 0.03), int(height * 0.025)), f"{label}  ·  {state}", fill=(235, 238, 245))
+    # Wallpaper: the soft blue of the default Windows 11 background.
+    for y in range(0, height, 4):
+        t = y / height
+        d.rectangle(
+            [0, y, width, y + 4], fill=(int(30 + 40 * t), int(70 + 50 * t), int(140 + 50 * t))
+        )
+
+    # Taskbar.
+    bar = int(48 * u)
+    d.rectangle([0, height - bar, width, height], fill=(32, 32, 36))
+    cx = width // 2
+    for i, colour in enumerate(
+        [(0, 120, 212), (90, 90, 96), (240, 180, 40), (0, 120, 212), (30, 140, 90)]
+    ):
+        x = cx + int((i - 2) * 44 * u)
+        d.rounded_rectangle(
+            [x - int(14 * u), height - bar + int(12 * u), x + int(14 * u), height - int(12 * u)],
+            radius=int(4 * u),
+            fill=colour,
+        )
+    small = _font(12 * u)
+    for row, (text, colour) in enumerate(
+        [
+            (time.strftime("%H.%M", now), (240, 240, 240)),
+            (time.strftime("%d/%m/%Y", now), (200, 200, 200)),
+        ]
+    ):
+        x = width - int(16 * u) - int(d.textlength(text, font=small))
+        d.text((x, height - bar + int((9 + row * 16) * u)), text, font=small, fill=colour)
+
+    # The app window, nearly maximised.
+    wx0, wy0, wx1, wy1 = int(24 * u), int(18 * u), width - int(24 * u), height - bar - int(14 * u)
+    title_h = int(32 * u)
+    dark = scene == "code"
+    d.rectangle([wx0, wy0, wx1, wy1], fill=(30, 30, 30) if dark else (255, 255, 255))
+    d.rectangle([wx0, wy0, wx1, wy0 + title_h], fill=(50, 50, 52) if dark else (238, 240, 243))
+    title_font = _font(13 * u)
+    titles = {
+        "code": f"latihan_{index % 7 + 1}.py - Visual Studio Code",
+        "browser": f"{(url or 'elearning.kampus.ac.id')} - Google Chrome",
+        "docs": "Laporan Praktikum.docx - Word",
+    }
+    d.text(
+        (wx0 + int(14 * u), wy0 + int(8 * u)),
+        titles[scene],
+        font=title_font,
+        fill=(220, 220, 220) if dark else (40, 40, 40),
+    )
+    ink = (200, 200, 200) if dark else (60, 60, 60)
+    my, g = wy0 + title_h // 2, max(2, int(5 * u))
+    close_x, max_x, min_x = (wx1 - int(k * 46 * u) - int(23 * u) for k in range(3))
+    d.line([close_x - g, my - g, close_x + g, my + g], fill=ink, width=max(1, int(u)))
+    d.line([close_x - g, my + g, close_x + g, my - g], fill=ink, width=max(1, int(u)))
+    d.rectangle([max_x - g, my - g, max_x + g, my + g], outline=ink, width=max(1, int(u)))
+    d.line([min_x - g, my, min_x + g, my], fill=ink, width=max(1, int(u)))
+    top = wy0 + title_h
+    body = _font(15 * u)
+    line_h = int(24 * u)
+
+    if scene == "code":
+        body = _font(14 * u, mono=True)
+        d.rectangle([wx0, top, wx0 + int(48 * u), wy1], fill=(51, 51, 51))  # activity bar
+        d.rectangle(
+            [wx0 + int(48 * u), top, wx0 + int(260 * u), wy1], fill=(37, 37, 38)
+        )  # explorer
+        for i, name in enumerate(["latihan_1.py", "latihan_2.py", "data.csv", "README.md"]):
+            d.text(
+                (wx0 + int(70 * u), top + int((14 + i * 26) * u)),
+                name,
+                font=small,
+                fill=(204, 204, 204),
+            )
+        x0 = wx0 + int(300 * u)
+        typed = 6 + int(time.time() / 2) % (len(CODE) - 5)  # the participant keeps typing
+        for i, tokens in enumerate(CODE[:typed]):
+            y = top + int(20 * u) + i * line_h
+            d.text((x0 - int(30 * u), y), str(i + 1), font=body, fill=(110, 118, 129))
+            x = x0
+            for kind, text in tokens:
+                d.text((x, y), text, font=body, fill=CODE_COLORS[kind])
+                x += int(d.textlength(text, font=body))
+        d.rectangle([wx0, wy1 - int(22 * u), wx1, wy1], fill=(0, 122, 204))  # status bar
+    elif scene == "browser":
+        d.rectangle([wx0, top, wx1, top + int(40 * u)], fill=(247, 248, 250))
+        d.rounded_rectangle(
+            [wx0 + int(110 * u), top + int(7 * u), wx1 - int(120 * u), top + int(33 * u)],
+            radius=int(13 * u),
+            fill=(232, 234, 237),
+        )
+        d.text(
+            (wx0 + int(130 * u), top + int(12 * u)),
+            url or "elearning.kampus.ac.id/course/algoritma",
+            font=small,
+            fill=(60, 64, 67),
+        )
+        page = top + int(40 * u)
+        brand = {
+            "facebook.com": (24, 119, 242),
+            "chat.openai.com": (16, 163, 127),
+            "roblox.com": (226, 35, 26),
+        }.get(url or "", (0, 84, 147))
+        d.rectangle([wx0, page, wx1, page + int(64 * u)], fill=brand)
+        d.text(
+            (wx0 + int(40 * u), page + int(20 * u)),
+            (url or "E-Learning Kampus").split("/")[0],
+            font=_font(20 * u),
+            fill=(255, 255, 255),
+        )
+        for i in range(7):
+            y = page + int((100 + i * 34) * u)
+            d.rectangle(
+                [
+                    wx0 + int(40 * u),
+                    y,
+                    wx0 + int((260 + (index * 37 + i * 91) % 520) * u),
+                    y + int(12 * u),
+                ],
+                fill=(210, 214, 220),
+            )
+        d.rectangle(
+            [wx1 - int(340 * u), page + int(100 * u), wx1 - int(40 * u), page + int(300 * u)],
+            fill=(240, 242, 245),
+            outline=(220, 223, 228),
+        )
+    else:  # docs
+        d.rectangle([wx0, top, wx1, top + int(88 * u)], fill=(243, 242, 241))  # ribbon
+        d.rectangle([wx0, top, wx1, top + int(22 * u)], fill=(43, 87, 154))
+        page_x0, page_x1 = cx - int(300 * u), cx + int(300 * u)
+        d.rectangle([wx0, top + int(88 * u), wx1, wy1], fill=(230, 230, 230))
+        d.rectangle([page_x0, top + int(108 * u), page_x1, wy1], fill=(255, 255, 255))
+        d.text(
+            (page_x0 + int(50 * u), top + int(140 * u)),
+            "Laporan Praktikum Basis Data",
+            font=_font(20 * u),
+            fill=(30, 30, 30),
+        )
+        for i in range(9):
+            y = top + int((190 + i * 26) * u)
+            d.rectangle(
+                [
+                    page_x0 + int(50 * u),
+                    y,
+                    page_x1 - int((50 + (index * 13 + i * 47) % 160) * u),
+                    y + int(9 * u),
+                ],
+                fill=(150, 150, 150),
+            )
+
+    if state == "paused":
+        img = Image.eval(img, lambda v: int(v * 0.55))
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=55)
+    img.save(buf, format="JPEG", quality=70)
     return buf.getvalue()
 
 
@@ -96,8 +323,12 @@ class SimulatedPC:
         with contextlib.suppress(OSError):
             token = self._token_file.read_text(encoding="utf-8").strip() or None
         self.client = DashboardClient(
-            identity=AgentIdentity(agent_id=agent_id, hostname=self.name,
-                                   username=self.user, agent_version="0.1.0-demo"),
+            identity=AgentIdentity(
+                agent_id=agent_id,
+                hostname=self.name,
+                username=self.user,
+                agent_version="0.1.0-demo",
+            ),
             token=token,
             # Like the real agent: the code is only presented while unpaired.
             pairing_code=None if token else pairing_code,
@@ -106,9 +337,11 @@ class SimulatedPC:
             desktop_access_provider=lambda: index != 6,
             input_frozen_provider=lambda: self.frozen,
             state_provider=lambda: self.state,
-            metrics_provider=lambda: (random.uniform(0.4, 1.9), random.uniform(38, 62),
-                                      random.choice(["Google Chrome", "Visual Studio Code",
-                                                     "Microsoft Edge"])),
+            metrics_provider=lambda: (
+                random.uniform(0.4, 1.9),
+                random.uniform(38, 62),
+                random.choice(["Google Chrome", "Visual Studio Code", "Microsoft Edge"]),
+            ),
             on_ruleset=self.on_ruleset,
             on_command=self.on_command,
             heartbeat_interval_s=3.0,
@@ -157,9 +390,16 @@ class SimulatedPC:
             hi = self.stream is StreamMode.HIRES
             w, h = (1280, 720) if hi else (320, 180)
             jpeg = make_frame(self.name, str(self.state), w, h)
-            await self.client.send_event(ScreenFramePayload(
-                agent_id=self.client.agent_id, hi_res=hi, width=w, height=h,
-                jpeg_b64=base64.b64encode(jpeg).decode(), captured_at=time.time()))
+            await self.client.send_event(
+                ScreenFramePayload(
+                    agent_id=self.client.agent_id,
+                    hi_res=hi,
+                    width=w,
+                    height=h,
+                    jpeg_b64=base64.b64encode(jpeg).decode(),
+                    captured_at=time.time(),
+                )
+            )
             await asyncio.sleep(0.1 if hi else 0.2)
 
     async def _violation_loop(self) -> None:
@@ -176,11 +416,26 @@ class SimulatedPC:
                 site, title = random.choice(SITES)
                 kind, subject = ViolationKind.SITE_TITLE, site
                 detail, from_title = f"Judul jendela: {title}", True
-            shot = make_frame(self.name, "pelanggaran", 640, 360)
-            await self.client.send_event(ViolationPayload(
-                agent_id=self.client.agent_id, kind=kind, subject=subject, detail=detail,
-                detected_from_title=from_title, dry_run=dry, occurred_at=time.time(),
-                screenshot_b64=base64.b64encode(shot).decode()))
+            shot = make_frame(
+                self.name,
+                "pelanggaran",
+                640,
+                360,
+                scene="browser" if from_title else None,
+                url=subject if from_title else None,
+            )
+            await self.client.send_event(
+                ViolationPayload(
+                    agent_id=self.client.agent_id,
+                    kind=kind,
+                    subject=subject,
+                    detail=detail,
+                    detected_from_title=from_title,
+                    dry_run=dry,
+                    occurred_at=time.time(),
+                    screenshot_b64=base64.b64encode(shot).decode(),
+                )
+            )
 
 
 def start_agents(count: int, url: str, pairing_code: str, token_dir: Path) -> threading.Thread:
