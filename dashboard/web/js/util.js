@@ -39,13 +39,6 @@
   function datetime(ts) { return ts ? DATETIME_FMT.format(new Date(ts * 1000)) : "—"; }
   function fullDate(ts) { return ts ? FULL_FMT.format(new Date(ts * 1000)) : "—"; }
 
-  /** Log-book time: "14.05" for today, "05 Okt 14.05" before that. */
-  function stamp(ts) {
-    if (!ts) return "—";
-    const when = new Date(ts * 1000);
-    return when.toDateString() === new Date().toDateString() ? clock(ts) : datetime(ts);
-  }
-
   /** "baru saja" / "3 menit lalu" — relative time in plain Indonesian. */
   function ago(ts) {
     if (!ts) return "—";
@@ -70,8 +63,8 @@
    * Each status carries an icon and a word, so it is never colour-only. */
   const STATUS = {
     online:  { label: "Aktif",    icon: "i-dot",        cls: "status--online" },
-    paused:  { label: "Dijeda",   icon: "i-pause",      cls: "status--paused" },
-    dropped: { label: "Terputus", icon: "i-alert",      cls: "status--dropped" },
+    paused:  { label: "Dijeda",   icon: "i-pause-filled", cls: "status--paused" },
+    dropped: { label: "Terputus", icon: "i-alert-filled", cls: "status--dropped" },
     offline: { label: "Mati",     icon: "i-dot-hollow", cls: "status--offline" },
   };
 
@@ -105,7 +98,7 @@
   function plural(n, word) { return `${n} ${word}`; }
 
   global.U = {
-    $, $$, esc, el, icon, clock, datetime, fullDate, stamp, ago, duration,
+    $, $$, esc, el, icon, clock, datetime, fullDate, ago, duration,
     statusInfo, statusChip, violationLabel, debounce, plural,
   };
 })(window);

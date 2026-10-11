@@ -9,7 +9,7 @@
   const { $, esc, icon } = global.U;
 
   /* ---------------------------------------------------------------- toasts */
-  const TOAST_ICON = { ok: "i-check", error: "i-alert", warn: "i-alert", info: "i-message" };
+  const TOAST_ICON = { ok: "i-check", error: "i-error", warn: "i-alert", info: "i-info" };
 
   // A burst of violations must not bury the screen; oldest ones give way.
   const MAX_TOASTS = 4;
@@ -23,7 +23,7 @@
           <div class="toast__title">${esc(title)}</div>
           ${text ? `<div class="toast__text">${esc(text)}</div>` : ""}
         </div>
-        <button class="btn btn--icon btn--sm btn--ghost" aria-label="Tutup">
+        <button class="btn btn--icon btn--sm btn--ghost" aria-label="Tutup pemberitahuan">
           ${icon("x", "btn__icon")}
         </button>
       </div>`);
@@ -149,7 +149,7 @@
         title,
         build: (body) => {
           body.innerHTML = `
-            <p>${esc(message)}</p>
+            <p style="font-size:var(--text-md)">${esc(message)}</p>
             ${warning ? `<div class="dialog__warn" style="margin-top:var(--s-4)">
                 ${icon("alert")}<div>${esc(warning)}</div></div>` : ""}`;
         },
@@ -178,16 +178,17 @@
   }
 
   /* ----------------------------------------------------------- empty state */
-  // Plain words, left-aligned with the content around them: a big centred
-  // icon adds nothing a sentence does not already say (ADR-0005).
-  function empty({ title, text, actionLabel, onAction }) {
+  function empty({ iconName, title, text, actionLabel, onAction }) {
     const node = global.U.el(`
       <div class="empty">
+        <svg class="empty__icon" aria-hidden="true"><use href="#i-${esc(iconName || "monitor")}"/></svg>
         <div class="empty__title">${esc(title)}</div>
-        ${text ? `<p class="empty__text">${esc(text)}</p>` : ""}
+        <p class="empty__text">${esc(text || "")}</p>
       </div>`);
     if (actionLabel && onAction) {
-      const btn = global.U.el(`<button class="btn">${esc(actionLabel)}</button>`);
+      const btn = global.U.el(
+        `<button class="btn btn--primary" style="margin-top:var(--s-2)">${esc(actionLabel)}</button>`
+      );
       btn.addEventListener("click", onAction);
       node.appendChild(btn);
     }
