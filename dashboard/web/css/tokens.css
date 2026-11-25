@@ -3,32 +3,40 @@
  * One restrained accent, neutral surfaces, and semantic colour reserved
  * strictly for machine status — so a red dot always means the same thing.
  * Dark mode is defined on its own, not derived by inversion.
+ * Design read: a calm lab supervision workspace, using the existing blue
+ * identity and Windows typography. ENERGY 2 / RHYTHM 2 / MOTION 1.
  */
 
 :root {
+  color-scheme: light;
   /* ---- neutrals (light) ---- */
-  --canvas:          #fbfbfc;
+  --canvas:          #f2f4f8;
   --surface:         #ffffff;
-  --surface-subtle:  #f5f6f8;
-  --surface-sunken:  #eef0f3;
-  --surface-hover:   #f0f2f5;
+  --surface-subtle:  #f8f9fc;
+  --surface-sunken:  #e9edf4;
+  --surface-hover:   #edf1f8;
+  --sidebar:         #e9edf5;
+  --nav-active:      #ffffff;
 
-  --border:          #e2e5ea;
-  --border-strong:   #cdd2da;
+  --border:          #dce2ec;
+  --border-strong:   #8492a8;
   --border-focus:    #2f5fd0;
 
-  --text:            #15171c;
-  --text-secondary:  #596070;
-  --text-tertiary:   #868d9b;
+  --text:            #1b2940;
+  --text-secondary:  #52627a;
+  --text-tertiary:   #586880;
   --text-inverse:    #ffffff;
 
   /* ---- accent ---- */
-  --accent:          #2f5fd0;
-  --accent-hover:    #2850b5;
-  --accent-active:   #22418f;
-  --accent-subtle:   #eaf0fd;
-  --accent-border:   #c3d4f7;
-  --accent-text:     #1e47a8;
+  --accent:          #315dcc;
+  --accent-hover:    #264eaf;
+  --accent-active:   #204294;
+  --accent-subtle:   #edf2ff;
+  --accent-border:   #b8c9f2;
+  --accent-text:     #294fae;
+  --on-accent:       #ffffff;
+  --danger-fill:     #b3261e;
+  --danger-fill-hover: #96201a;
 
   /* ---- status: always paired with an icon and a word ---- */
   --ok:              #15763c;
@@ -54,17 +62,17 @@
   --font-mono: ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas,
                "SF Mono", Menlo, monospace;
 
-  --text-2xs: 10.5px;
-  --text-xs:  11.5px;
-  --text-sm:  12.5px;
-  --text-md:  13.5px;
-  --text-lg:  15px;
-  --text-xl:  18px;
-  --text-2xl: 22px;
-  --text-3xl: 28px;
+  --text-2xs: 11px;
+  --text-xs:  12px;
+  --text-sm:  13px;
+  --text-md:  14px;
+  --text-lg:  16px;
+  --text-xl:  20px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
 
   --leading-tight: 1.25;
-  --leading-normal: 1.45;
+  --leading-normal: 1.5;
   --leading-relaxed: 1.6;
 
   --weight-normal: 400;
@@ -83,19 +91,19 @@
   --s-12: 48px;
 
   /* ---- shape ---- */
-  --radius-sm: 4px;
-  --radius:    6px;
-  --radius-lg: 8px;
+  --radius-sm: 5px;
+  --radius:    8px;
+  --radius-lg: 12px;
   --radius-pill: 999px;
 
   /* Elevation is used sparingly: borders carry most of the structure. */
-  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.05);
-  --shadow-md: 0 2px 6px rgba(16, 20, 28, 0.07), 0 1px 2px rgba(16, 20, 28, 0.05);
-  --shadow-lg: 0 12px 32px rgba(16, 20, 28, 0.14), 0 2px 8px rgba(16, 20, 28, 0.08);
+  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.04), 0 1px 3px rgba(16, 20, 28, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 20, 28, 0.07), 0 1px 3px rgba(16, 20, 28, 0.05);
+  --shadow-lg: 0 16px 40px rgba(16, 20, 28, 0.14), 0 2px 8px rgba(16, 20, 28, 0.08);
 
   /* ---- layout ---- */
-  --sidebar-w: 212px;
-  --topbar-h: 48px;
+  --sidebar-w: 232px;
+  --topbar-h: 72px;
 
   --transition: 120ms cubic-bezier(0.2, 0, 0.38, 1);
 }
@@ -103,44 +111,50 @@
 /* Dark theme: separately chosen values, not an inversion. Surfaces step up in
  * lightness as they come forward, which is what makes depth readable on dark. */
 :root[data-theme="dark"] {
-  --canvas:          #0d0f12;
-  --surface:         #15181d;
-  --surface-subtle:  #1b1f25;
-  --surface-sunken:  #101317;
-  --surface-hover:   #22262e;
+  color-scheme: dark;
+  --canvas:          #101720;
+  --surface:         #192330;
+  --surface-subtle:  #1d2938;
+  --surface-sunken:  #131d29;
+  --surface-hover:   #253346;
+  --sidebar:         #141e2b;
+  --nav-active:      #263750;
 
-  --border:          #272c34;
-  --border-strong:   #3a414c;
-  --border-focus:    #7d9dff;
+  --border:          #2d3b4e;
+  --border-strong:   #65768e;
+  --border-focus:    #99b7ff;
 
-  --text:            #e7eaef;
-  --text-secondary:  #a2aab8;
-  --text-tertiary:   #737c8b;
+  --text:            #edf2fa;
+  --text-secondary:  #b2bfd2;
+  --text-tertiary:   #9aaac1;
   --text-inverse:    #0d0f12;
 
-  --accent:          #6c8eff;
-  --accent-hover:    #8098ff;
-  --accent-active:   #93a9ff;
-  --accent-subtle:   #19233c;
-  --accent-border:   #2e3d63;
-  --accent-text:     #a8bdff;
+  --accent:          #9dbbff;
+  --accent-hover:    #b5ccff;
+  --accent-active:   #c9daff;
+  --accent-subtle:   #21314d;
+  --accent-border:   #4b6695;
+  --accent-text:     #bdd0ff;
+  --on-accent:       #142442;
+  --danger-fill:     #ae332e;
+  --danger-fill-hover: #c23c35;
 
-  --ok:              #4bab6d;
-  --ok-subtle:       #13241a;
-  --ok-border:       #275437;
+  --ok:              #86d7ab;
+  --ok-subtle:       #19372e;
+  --ok-border:       #396853;
 
-  --warn:            #d29a3c;
-  --warn-subtle:     #241c0f;
-  --warn-border:     #574224;
+  --warn:            #edc077;
+  --warn-subtle:     #362e21;
+  --warn-border:     #756040;
 
-  --danger:          #e2695e;
-  --danger-subtle:   #251413;
-  --danger-border:   #5c2d29;
+  --danger:          #f3a09b;
+  --danger-subtle:   #3a252b;
+  --danger-border:   #805052;
   --danger-hover:    #ec7d72;
 
-  --neutral:         #8b93a1;
-  --neutral-subtle:  #1c2026;
-  --neutral-border:  #333942;
+  --neutral:         #b2bfd2;
+  --neutral-subtle:  #243041;
+  --neutral-border:  #45546a;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);

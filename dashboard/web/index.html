@@ -74,21 +74,22 @@
   </header>
 
   <nav class="sidebar" aria-label="Navigasi utama">
-    <button class="nav-item" data-page="beranda" aria-current="page">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-home"/></svg><span>Beranda</span>
+    <button class="nav-item" data-page="beranda" aria-current="page" aria-label="Beranda" title="Beranda (1)">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-home"/></svg><span>Beranda</span><kbd aria-hidden="true">1</kbd>
     </button>
-    <button class="nav-item" data-page="monitoring">
+    <button class="nav-item" data-page="monitoring" aria-label="Layar PC" title="Layar PC (2)">
       <svg class="nav-item__icon" aria-hidden="true"><use href="#i-grid"/></svg><span>Layar PC</span>
+      <kbd aria-hidden="true">2</kbd>
       <span class="nav-item__badge" id="nav-badge" hidden>0</span>
     </button>
-    <button class="nav-item" data-page="aturan">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Aturan</span>
+    <button class="nav-item" data-page="aturan" aria-label="Aturan" title="Aturan (3)">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Aturan</span><kbd aria-hidden="true">3</kbd>
     </button>
-    <button class="nav-item" data-page="laporan">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-report"/></svg><span>Laporan</span>
+    <button class="nav-item" data-page="laporan" aria-label="Laporan" title="Laporan (4)">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-report"/></svg><span>Laporan</span><kbd aria-hidden="true">4</kbd>
     </button>
-    <button class="nav-item" data-page="aktivitas">
-      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-history"/></svg><span>Catatan aktivitas</span>
+    <button class="nav-item" data-page="aktivitas" aria-label="Catatan aktivitas" title="Catatan aktivitas (5)">
+      <svg class="nav-item__icon" aria-hidden="true"><use href="#i-history"/></svg><span>Catatan aktivitas</span><kbd aria-hidden="true">5</kbd>
     </button>
   </nav>
 
@@ -98,6 +99,7 @@
       <div class="page__head">
         <div>
           <h1 class="page__title" id="t-beranda">Beranda</h1>
+          <p class="page__subtitle">Pantau kondisi PC dan sesi laboratorium dalam satu tempat.</p>
         </div>
         <div class="page__actions" id="session-actions"></div>
       </div>
@@ -156,6 +158,7 @@
       <div class="page__head">
         <div>
           <h1 class="page__title" id="t-aturan">Aturan</h1>
+          <p class="page__subtitle">Atur akses aplikasi, situs, dan penindakan di PC peserta.</p>
         </div>
       </div>
       <div id="rules-content"></div>
@@ -166,6 +169,7 @@
       <div class="page__head">
         <div>
           <h1 class="page__title" id="t-laporan">Laporan</h1>
+          <p class="page__subtitle">Tinjau pelanggaran dan unduh laporan setiap sesi.</p>
         </div>
         <div class="page__actions" id="report-actions"></div>
       </div>
